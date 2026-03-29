@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="obs-autoplay" content="1">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SEARCHER — Deep Space</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -596,26 +595,9 @@ let thrustNode=null, thrustGain=null;
 let lastSoundGs='FLIGHT';
 
 function getAudio(){
-  if(!audioCtx){
-    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-  }
-  // Resume if suspended (autoplay policy) — safe to call repeatedly
-  if(audioCtx.state==='suspended') audioCtx.resume();
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   return audioCtx;
 }
-
-// Pre-create AudioContext immediately so it's ready
-// OBS Browser Source: auto-resume after short delay (no user gesture needed in OBS)
-(function initAudio(){
-  try{
-    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    // Resume immediately — works in OBS which bypasses autoplay restrictions
-    audioCtx.resume().catch(()=>{});
-    // Fallback: retry resume after 500ms and 2s in case OBS is slow to grant permission
-    setTimeout(()=>{ if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume(); }, 500);
-    setTimeout(()=>{ if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume(); }, 2000);
-  }catch(e){}
-})();
 
 // Low rumble loop for thrust
 function startThrustSound(){
@@ -822,20 +804,17 @@ function getUKVoice(){
 }
 if(voiceSynth.onvoiceschanged!==undefined) voiceSynth.onvoiceschanged=()=>{};
 
-// Unlock TTS in OBS Browser Source — speak a silent zero-volume utterance on load
-// This bypasses autoplay restrictions that would otherwise block all speech
-(function unlockTTS(){
-  const unlock=()=>{
-    const utt=new SpeechSynthesisUtterance(' ');
-    utt.volume=0; utt.rate=10; // instant, silent
-    window.speechSynthesis.speak(utt);
-  };
-  // Try immediately, then retry to catch OBS's delayed audio grant
-  setTimeout(unlock, 800);
-  setTimeout(unlock, 2500);
-})();
+function _showComputerText(text){
+  const el=document.getElementById('comp-readout');
+  if(!el) return;
+  el.textContent=text;
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>{ el.textContent='SYSTEMS NOMINAL'; }, Math.max(3500,text.length*60));
+}
 
 function speak(text,priority=false){
+  // Always show in ship computer readout regardless of audio state
+  _showComputerText(text);
   if(!voiceOn) return;
   if(!priority&&voiceCooldown>Date.now()) return;
   if(voiceSynth.speaking&&!priority) return;
@@ -916,6 +895,11 @@ let listerLasers=[];
 let listerPhase=0;
 let listerUnitPos=[];
 let listerCinStart=0;
+let listerShieldFlash=0;
+let listerCharging=[];
+let _shipImpactFlash=0; // timestamp for hull-hit screen flash
+let _shipImpactShake=0;  // timestamp for hull-hit cockpit shake
+const _tankAim=[0,0,0,0]; // per-tank turret angle (rotates toward viewer when firing)
 
 const BODIES=[
   {name:'ORIGIN',  type:'Habitable World', x:0,    y:2200, r:195,atm:'rgba(80,165,210,', atmT:.44,srf:'earth',  rings:false,isStation:false},
@@ -945,8 +929,8 @@ function cycleTarget(){
   _lastAutopilotTarget=''; // allow fresh approach announce for new target
   lastVoiceApproach='';    // reset so new target can announce
   if(gs==='FLIGHT'){
-    if(!_helmAnnouncedOnce){ speak('Target: '+t.name+'. Helm adjusting.',false); _helmAnnouncedOnce=true; }
-    else { speak('Target: '+t.name+'.',false); }
+    if(!_helmAnnouncedOnce){ speak('Target: '+t.name+'. Helm adjusting.',true); _helmAnnouncedOnce=true; }
+    else { speak('Target: '+t.name+'.',true); }
   }
 }
 
@@ -973,13 +957,14 @@ function updateAutopilot(){
       ship.vx=0; ship.vy=0; autopilotOn=false;
       document.getElementById('btn-autopilot').classList.remove('ap-on');
       document.getElementById('btn-autopilot').textContent='⊙ AUTOPILOT';
+      // Face planet after stop — helm rotates smoothly from here
       steerTarget=Math.atan2(t.y-ship.y,t.x-ship.x);
-      if(typeof lastVoiceApproach!=='undefined') lastVoiceApproach='';
       speak(t.name+' in range. You have control.',true);
       _lastAutopilotTarget=t.name; lastVoiceApproach=t.name;
     }
     return;
   }
+  // Always steer toward approach point — no late-angle flip
   steerTarget=angleToAP;
   const da=normA(angleToAP-ship.angle);
   const aligned=Math.abs(da)<0.14;
@@ -1252,7 +1237,7 @@ function updateSeq(){
       ship.vx=0; ship.vy=0;
       surfaceT=1; surfaceAlt=0;
       seqPhase=3; seqTimer=0; sqUI(3); impactStart=Date.now();
-      if(!b.isStation){ document.getElementById('sq3').textContent='TOUCH'; if(b.srf!=='lister') playAtmoEntry(); }
+      if(!b.isStation){ document.getElementById('sq3').textContent='TOUCH'; playAtmoEntry(); }
       // Touchdown voice fires from updateVoice when gs=LANDED
     }
 
@@ -4018,20 +4003,74 @@ function _drawListerSurface(vx,vy,vW,vH,now){
     const sx=vx+(i*173+61)%vW,sy=vy+(i*89+31)%(hY-vy);
     CX.fillStyle=`rgba(255,255,255,${0.05+((i*37)%8)*0.04})`;CX.beginPath();CX.arc(sx,sy,.4+(i%3)*.15,0,Math.PI*2);CX.fill();
   }
-  // Green planet upper-left
-  {const px2=vx+vW*.12,py2=vy+vH*.14,pr=Math.min(vW,vH)*.055;
-  const pg=CX.createRadialGradient(px2-pr*.25,py2-pr*.25,pr*.1,px2,py2,pr);
+  // ── GREEN RINGED PLANET (upper-left) — exact MechWars ──
+  {const pr=Math.min(vW,vH)*0.092; // bigger like MechWars
+  const px2=vx+vW*0.14, py2=vy+vH*0.20;
+  const pg=CX.createRadialGradient(px2-pr*.25,py2-pr*.25,pr*.10,px2,py2,pr);
   pg.addColorStop(0,'#a7ff4a');pg.addColorStop(.35,'#38d94a');pg.addColorStop(.7,'#0b6b2f');pg.addColorStop(1,'#032512');
   CX.fillStyle=pg;CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.fill();
-  CX.save();CX.translate(px2,py2);CX.scale(1,.28);CX.strokeStyle='rgba(150,255,150,.45)';CX.lineWidth=pr*.35;
-  CX.beginPath();CX.arc(0,0,pr*1.65,0,Math.PI*2);CX.stroke();CX.restore();}
-  // Blue planet upper-right
-  {const px2=vx+vW*.82,py2=vy+vH*.10,pr=Math.min(vW,vH)*.048;
-  const pg=CX.createRadialGradient(px2-pr*.3,py2-pr*.3,pr*.1,px2,py2,pr);
-  pg.addColorStop(0,'#a8d8ff');pg.addColorStop(.35,'#4a98c8');pg.addColorStop(.7,'#1a5888');pg.addColorStop(1,'#0a2a44');
-  CX.fillStyle=pg;CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.fill();
-  CX.save();CX.translate(px2,py2);CX.scale(1,.25);CX.strokeStyle='rgba(180,210,240,.4)';CX.lineWidth=pr*.3;
-  CX.beginPath();CX.arc(0,0,pr*1.7,0,Math.PI*2);CX.stroke();CX.restore();}
+  // Cloud bands clipped to sphere
+  CX.save();CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.clip();
+  CX.globalAlpha=0.22;
+  for(let b=0;b<10;b++){
+    const by=py2-pr+b*(pr*0.22)+Math.sin((Date.now()*0.00035)+b)*2;
+    const band=CX.createLinearGradient(px2-pr,by,px2+pr,by);
+    band.addColorStop(0,'rgba(255,255,255,0)');band.addColorStop(.35,'rgba(190,255,190,.16)');
+    band.addColorStop(.65,'rgba(40,140,80,.18)');band.addColorStop(1,'rgba(255,255,255,0)');
+    CX.fillStyle=band;CX.fillRect(px2-pr,by,pr*2,pr*0.10);
+  }
+  CX.restore();CX.globalAlpha=1;
+  // Ring tilted like MechWars
+  CX.save();CX.translate(px2,py2);CX.rotate(-0.28);
+  const rA=CX.createLinearGradient(-pr*1.65,0,pr*1.65,0);
+  rA.addColorStop(0,'rgba(255,255,255,.02)');rA.addColorStop(.25,'rgba(210,190,170,.18)');
+  rA.addColorStop(.5,'rgba(255,255,255,.06)');rA.addColorStop(.75,'rgba(170,150,130,.16)');rA.addColorStop(1,'rgba(255,255,255,.02)');
+  CX.strokeStyle=rA;CX.lineWidth=pr*0.055;CX.globalAlpha=1;
+  CX.beginPath();CX.ellipse(0,0,pr*1.62,pr*0.38,0,0,Math.PI*2);CX.stroke();
+  CX.globalAlpha=.55;CX.lineWidth=pr*0.022;CX.strokeStyle='rgba(255,255,255,.08)';
+  CX.beginPath();CX.ellipse(0,0,pr*1.72,pr*0.40,0,0,Math.PI*2);CX.stroke();
+  CX.beginPath();CX.ellipse(0,0,pr*1.52,pr*0.35,0,0,Math.PI*2);CX.stroke();
+  CX.restore();}
+
+  // ── BLUE RINGED PLANET (upper-right) — exact MechWars ──
+  {const bpr=Math.min(vW,vH)*0.072;
+  const bpx=vx+vW*0.80, bpy=vy+vH*0.14;
+  CX.save();CX.translate(bpx,bpy);
+  // Atmospheric glow
+  CX.globalAlpha=0.4;
+  const atmoG=CX.createRadialGradient(0,0,bpr*.8,0,0,bpr*1.8);
+  atmoG.addColorStop(0,'rgba(100,180,255,.3)');atmoG.addColorStop(.5,'rgba(50,120,200,.15)');atmoG.addColorStop(1,'rgba(20,60,150,0)');
+  CX.fillStyle=atmoG;CX.beginPath();CX.arc(0,0,bpr*1.8,0,Math.PI*2);CX.fill();
+  CX.globalAlpha=1;
+  // Ring behind (back half)
+  const rG=CX.createLinearGradient(-bpr*2.2,0,bpr*2.2,0);
+  rG.addColorStop(0,'rgba(180,200,220,.1)');rG.addColorStop(.3,'rgba(200,220,240,.4)');
+  rG.addColorStop(.5,'rgba(220,235,250,.5)');rG.addColorStop(.7,'rgba(200,220,240,.4)');rG.addColorStop(1,'rgba(180,200,220,.1)');
+  CX.save();CX.globalAlpha=.6;CX.strokeStyle=rG;CX.lineWidth=bpr*.27;
+  CX.beginPath();CX.ellipse(0,0,bpr*2,bpr*.4,0,Math.PI,Math.PI*2);CX.stroke();
+  CX.lineWidth=bpr*.13;CX.globalAlpha=.4;
+  CX.beginPath();CX.ellipse(0,0,bpr*1.6,bpr*.32,0,Math.PI,Math.PI*2);CX.stroke();
+  CX.restore();
+  // Planet sphere
+  const bpg=CX.createRadialGradient(-bpr*.3,-bpr*.3,bpr*.1,0,0,bpr);
+  bpg.addColorStop(0,'#a8d8ff');bpg.addColorStop(.25,'#6ab8e8');bpg.addColorStop(.5,'#4a98c8');bpg.addColorStop(.75,'#2a78a8');bpg.addColorStop(1,'#1a5888');
+  CX.fillStyle=bpg;CX.beginPath();CX.arc(0,0,bpr,0,Math.PI*2);CX.fill();
+  // Gas bands
+  CX.save();CX.beginPath();CX.arc(0,0,bpr,0,Math.PI*2);CX.clip();
+  const gasT2=Date.now()*0.0001;
+  for(let i=0;i<6;i++){
+    CX.globalAlpha=0.12+(i%2)*0.05;CX.fillStyle=i%2===0?'#cceeff':'#88ccee';
+    const bandY=-bpr*.8+i*bpr*.3, woff=Math.sin(gasT2+i*.5)*3;
+    CX.beginPath();CX.ellipse(woff,bandY,bpr*1.2,5+(i%3)*2,0.05*i,0,Math.PI*2);CX.fill();
+  }
+  CX.restore();CX.globalAlpha=1;
+  // Ring in front (front half)
+  CX.save();CX.globalAlpha=.7;CX.strokeStyle=rG;CX.lineWidth=bpr*.27;
+  CX.beginPath();CX.ellipse(0,0,bpr*2,bpr*.4,0,0,Math.PI);CX.stroke();
+  CX.lineWidth=bpr*.13;CX.globalAlpha=.5;
+  CX.beginPath();CX.ellipse(0,0,bpr*1.6,bpr*.32,0,0,Math.PI);CX.stroke();
+  CX.restore();
+  CX.restore();}
   // Hills
   const hillY=vy+vH*0.68;
   ['rgba(55,55,65,.85)','rgba(40,40,48,.9)','rgba(28,28,34,.95)'].forEach((col,ci)=>{
@@ -4054,17 +4093,16 @@ function _drawListerSurface(vx,vy,vW,vH,now){
   for(let x=vx+gOff;x<vx+vW+120;x+=120){CX.globalAlpha=0.22;CX.strokeStyle='#151515';CX.lineWidth=3;CX.beginPath();CX.moveTo(x,hY);CX.lineTo(vx+vW/2+(x-vx-vW/2)*1.5,vy+vH);CX.stroke();}
   CX.globalAlpha=1;
 
-  const mechSc=Math.min(vW,vH)/320;
+  const mechSc=Math.min(vW,vH)/420;
   listerUnitPos=[];
 
   // Gas tanks — each has unique leg speed and phase so they don't march in sync
-  [{spd:12,off:vW*.08,face:true, ls:2.1,lp:0.0},
-   {spd:18,off:vW*.42,face:false,ls:3.4,lp:1.7},
-   {spd:9, off:vW*.68,face:true, ls:1.8,lp:0.9},
-   {spd:15,off:vW*.85,face:false,ls:2.7,lp:2.4}].forEach(({spd,off,face,ls,lp},i)=>{
+  [{spd:10,off:vW*.35,face:true, ls:2.1,lp:0.0}].forEach(({spd,off,face,ls,lp},i)=>{
     const tx=vx+((off+now*spd)%vW);
     const _s=100*mechSc/100; listerUnitPos.push({x:tx,y:hY,type:'tank',s:_s,facingRight:face});
-    _drawListerTRex(tx,hY,100*mechSc,90*mechSc,now*ls+lp,face,gasT,now);
+    const _cvW2=CV.width-PW*2, _cvH2=CV.height-BH;
+    listerUnitPos[listerUnitPos.length-1].idx=i; // ensure idx stored
+    _drawListerTRex(tx,hY,100*mechSc,90*mechSc,now*ls+lp,face,gasT,now,PW+_cvW2*0.5,_cvH2*0.55,i);
   });
   // Ground bots
   [[.15,18,true,1.8,0.0],[.38,22,false,2.3,1.1],[.62,16,true,1.5,2.2],[.88,20,false,2.7,0.7]].forEach(([px2,spd,face,lspd,lph],i)=>{
@@ -4077,6 +4115,18 @@ function _drawListerSurface(vx,vy,vW,vH,now){
     const dy2=vy+vH*yF+Math.sin(now*.8+i*1.3)*12;
     listerUnitPos.push({x:dx2,y:dy2,type:'drone',h:sz*mechSc*0.85});
     _drawListerDrone(dx2,dy2,sz*mechSc*1.2,sz*mechSc*0.85,now+i*2.2);
+  });
+
+  // Tank charge-up glow (flashes before bolt fires)
+  if(typeof listerCharging!=='undefined') listerCharging.forEach(ch=>{
+    const ca=Math.min(1,(nowMs-ch.born)/400);
+    CX.save();
+    CX.shadowColor='rgba(255,50,0,1)'; CX.shadowBlur=20+ca*25;
+    CX.fillStyle=`rgba(255,${Math.round(80+ca*80)},20,${0.5+ca*0.5})`;
+    CX.beginPath(); CX.arc(ch.x,ch.y,4+ca*8,0,Math.PI*2); CX.fill();
+    CX.globalAlpha=ca*0.6; CX.fillStyle='rgba(255,200,100,0.9)';
+    CX.beginPath(); CX.arc(ch.x,ch.y,2+ca*4,0,Math.PI*2); CX.fill();
+    CX.restore();
   });
 
   // Projectiles — drone orbs + tank lightning bolts
@@ -4131,20 +4181,19 @@ function _drawListerSurface(vx,vy,vW,vH,now){
   }
   // Shield - frame glow + activation flash
   if(listerShieldOn){
-    const pulse=0.5+Math.sin(now*3)*0.5;
+    const pulse=0.5+Math.sin(now*2.2)*0.5;
     const isFlashing=nowMs<listerShieldFlash;
-    const flashA=isFlashing?0.9:0.0;
     CX.save();
-    // Frame border glow
-    CX.strokeStyle=`rgba(0,220,64,${.22+pulse*.18})`;CX.lineWidth=isFlashing?5:2.5;
-    CX.shadowColor='rgba(0,255,64,0.8)';CX.shadowBlur=(isFlashing?28:12)+pulse*10;
+    // Gold frame border glow
+    CX.strokeStyle=`rgba(220,170,0,${.20+pulse*.18})`;CX.lineWidth=isFlashing?5:2;
+    CX.shadowColor='rgba(255,200,0,0.9)';CX.shadowBlur=(isFlashing?30:10)+pulse*8;
     CX.beginPath();CX.rect(vx+2,vy+2,vW-4,vH-4);CX.stroke();
-    // Flash overlay
     if(isFlashing){
       const fl=(listerShieldFlash-nowMs)/2000;
-      CX.fillStyle=`rgba(0,255,64,${fl*0.08})`;CX.fillRect(vx,vy,vW,vH);
-      // Corner brackets light up
-      CX.strokeStyle=`rgba(0,255,100,${fl*0.7})`;CX.lineWidth=2;
+      // Gold flash overlay
+      CX.fillStyle=`rgba(255,200,40,${fl*0.10})`;CX.fillRect(vx,vy,vW,vH);
+      // Gold corner brackets
+      CX.strokeStyle=`rgba(255,210,60,${fl*0.75})`;CX.lineWidth=2;
       [[vx,vy,1,1],[vx+vW,vy,-1,1],[vx,vy+vH,1,-1],[vx+vW,vy+vH,-1,-1]].forEach(([bx2,by2,dx2,dy2])=>{
         CX.beginPath();CX.moveTo(bx2+dx2*30,by2);CX.lineTo(bx2,by2);CX.lineTo(bx2,by2+dy2*30);CX.stroke();
       });
@@ -4157,10 +4206,21 @@ function _drawListerSurface(vx,vy,vW,vH,now){
     for(let m=0;m<listerMechsTransported;m++) _drawMechBot(vx+18+m*26,vy+vH-30,mechSc*.45,now+m,true);
     CX.restore();
   }
+  // Hull impact shake
+  if(_shipImpactShake>0&&nowMs<_shipImpactShake){
+    const sf=(_shipImpactShake-nowMs)/600;
+    const sxa=(Math.random()-0.5)*14*sf, sya=(Math.random()-0.5)*10*sf;
+    CX.translate(sxa,sya);
+  }
+  // Hull impact flash — brief red when fired upon
+  if(_shipImpactFlash>0&&nowMs<_shipImpactFlash){
+    const fl=(_shipImpactFlash-nowMs)/350;
+    CX.save();CX.fillStyle=`rgba(255,30,0,${fl*0.18})`;CX.fillRect(vx,vy,vW,vH);CX.restore();
+  }
   _drawCockpitFrame(vx,vy,vW,vH);
 }
 
-function _drawListerTRex(cx2,cy2,width,height,legAngle,facingRight,gasT,now){
+function _drawListerTRex(cx2,cy2,width,height,legAngle,facingRight,gasT,now,tgtX,tgtY,tankIdx){
   CX.save();CX.translate(cx2,cy2);if(!facingRight)CX.scale(-1,1);
   const s=width/100,mDark='#020202',mMid='#060606',mLight='#0c0c0c';
   const glowP=0.85+Math.sin(now*4)*0.15;
@@ -4190,8 +4250,17 @@ function _drawListerTRex(cx2,cy2,width,height,legAngle,facingRight,gasT,now){
   CX.beginPath();CX.moveTo(-80*s,-3*s+lm);CX.lineTo(-100*s,50*s+lm*.5);CX.lineTo(-95*s,55*s+lm*.5);CX.lineTo(-75*s,2*s+lm);CX.closePath();CX.fill();CX.stroke();
   CX.beginPath();CX.moveTo(50*s,-25*s);CX.lineTo(90*s,-5*s+lm2);CX.lineTo(95*s,lm2);CX.lineTo(55*s,-20*s);CX.closePath();CX.fill();CX.stroke();
   CX.beginPath();CX.moveTo(90*s,-3*s+lm2);CX.lineTo(110*s,50*s+lm2*.5);CX.lineTo(105*s,55*s+lm2*.5);CX.lineTo(85*s,2*s+lm2);CX.closePath();CX.fill();CX.stroke();
-  // Turret — uses legAngle for unique phase per tank
-  CX.save();CX.translate(60*s,-55*s);const aim=Math.sin(legAngle*0.8+legAngle*0.13)*0.35;CX.rotate(aim);
+  // Turret — each tank sweeps independently in a forward-downward arc toward viewer
+  // Each tank has unique speed/phase encoded in legAngle via i*0.01
+  const _tIdx=(typeof tankIdx==='number'?tankIdx:0);
+  const _phases=[0, 1.9, 3.5, 5.1];
+  const _speeds=[0.012, 0.009, 0.011, 0.010]; // extremely slow scan
+  const _ph=_phases[_tIdx]||0;
+  const _spd=_speeds[_tIdx]||0.10;
+  // Gentle slow sweep, -0.3 to +0.3 rad, centered forward
+  const aim=Math.sin(now*_spd+_ph)*0.30;
+  _tankAim[_tIdx]=aim; // store for bolt origin
+  CX.save();CX.translate(60*s,-55*s);CX.rotate(aim);
   CX.fillStyle=mDark;CX.beginPath();CX.ellipse(0,0,20*s,12*s,0,0,Math.PI*2);CX.fill();
   CX.fillStyle=mMid;CX.fillRect(10*s,-7*s,70*s,14*s);CX.fillStyle=mDark;CX.fillRect(75*s,-6*s,12*s,12*s);
   CX.fillStyle=mLight;CX.fillRect(30*s,-7*s,3*s,14*s);CX.fillRect(55*s,-7*s,3*s,14*s);CX.restore();
@@ -4289,16 +4358,20 @@ function _drawMechBot(cx2,cy2,sc,now,facingRight){
 
 function playShieldUp(){
   try{
-    const ac=new(window.AudioContext||window.webkitAudioContext)();
-    // Rising shield hum
-    const o=ac.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(220,ac.currentTime); o.frequency.linearRampToValueAtTime(880,ac.currentTime+0.6);
-    const g=ac.createGain(); g.gain.setValueAtTime(0,ac.currentTime); g.gain.linearRampToValueAtTime(0.22,ac.currentTime+0.15); g.gain.linearRampToValueAtTime(0.08,ac.currentTime+0.7);
-    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.8);
-    // Two beeps
-    [0.3,0.55].forEach(t=>{
-      const b=ac.createOscillator(); b.type='sine'; b.frequency.value=1200;
-      const bg=ac.createGain(); bg.gain.setValueAtTime(0.15,ac.currentTime+t); bg.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+t+0.1);
-      b.connect(bg); bg.connect(ac.destination); b.start(ac.currentTime+t); b.stop(ac.currentTime+t+0.12);
+    const ac=getAudio();
+    // Deep power-up bass thud
+    const sub=ac.createOscillator(); sub.type='sine'; sub.frequency.setValueAtTime(60,ac.currentTime); sub.frequency.exponentialRampToValueAtTime(200,ac.currentTime+0.25);
+    const sg=ac.createGain(); sg.gain.setValueAtTime(0.4,ac.currentTime); sg.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.4);
+    sub.connect(sg); sg.connect(ac.destination); sub.start(); sub.stop(ac.currentTime+0.45);
+    // Rising shield harmonic sweep
+    const o=ac.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(180,ac.currentTime+0.1); o.frequency.linearRampToValueAtTime(1400,ac.currentTime+0.7);
+    const g=ac.createGain(); g.gain.setValueAtTime(0,ac.currentTime+0.1); g.gain.linearRampToValueAtTime(0.18,ac.currentTime+0.25); g.gain.linearRampToValueAtTime(0.04,ac.currentTime+0.8);
+    o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+0.1); o.stop(ac.currentTime+0.85);
+    // Gold confirmation double-ping
+    [0.6,0.78].forEach((t,i)=>{
+      const b=ac.createOscillator(); b.type='sine'; b.frequency.value=i===0?1600:2000;
+      const bg=ac.createGain(); bg.gain.setValueAtTime(0.18,ac.currentTime+t); bg.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+t+0.12);
+      b.connect(bg); bg.connect(ac.destination); b.start(ac.currentTime+t); b.stop(ac.currentTime+t+0.15);
     });
   }catch(e){}
 }
@@ -4309,9 +4382,10 @@ function scheduleListerBriefing_(){
   const say=(txt,delay)=>setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')speak(txt,true);},delay);
   say('Surface contact. Lister-Alpha.',2000);
   say('Scanning. Energy signatures detected.',9000);
-  say('Artificial intelligence confirmed.',15000);
-  say('Threat level: Extreme Hostile.',21000);
-  say('Raising defensive shields.',28000);
+  say('Artificial intelligence confirmed.',16000);
+  say('Classification: Supreme Intelligence.',22000);
+  say('Threat level: Extreme Hostile.',29000);
+  say('Raising shields now.',36000);
   setTimeout(()=>{
     if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister'){
       listerShieldOn=true;
@@ -4319,10 +4393,9 @@ function scheduleListerBriefing_(){
       // Flash shield on frame for 2s
       listerShieldFlash=Date.now()+2000;
     }
-  },26500);
-  say('Shields online.',27000);
-  say('Hostile units mobilising. Recommend immediate departure.',33000);
-  setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')listerStartFiring();},39000);
+  },34500);
+  say('Hostile units mobilising. Recommend immediate departure.',41000);
+  setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')listerStartFiring();},47000);
 }
 
 function listerStartFiring(){
@@ -4333,49 +4406,85 @@ function listerStartFiring(){
   // Active projectiles: {x,y,vx,vy,type,born,life}
   // type: 'orb' = drone red ball, 'bolt' = tank lightning
   const iv=setInterval(()=>{
-    if(gs!=='LANDED'||!seqBody||seqBody.srf!=='lister'){clearInterval(iv);return;}
+    if((gs!=='LANDED'&&gs!=='LANDING')||!seqBody||seqBody.srf!=='lister'){clearInterval(iv);return;}
     const vW=CV.width-PW*2, vH=CV.height-BH;
     const targetX=PW+vW*0.5, targetY=vH*0.52; // aim at ship center
     // Alternate: 2 drones then 1 tank for visual variety
     const fromDrone=shots%3!==2;
     const pool=listerUnitPos.filter(u=>u.type===(fromDrone?'drone':'tank'));
-    if(pool.length===0){shots++;return;}
+    // If no units tracked, fire from fixed screen positions
+    const vW2=CV.width-PW*2, vH2=CV.height-BH;
+    if(pool.length===0){
+      if(fromDrone){
+        const fx=PW+vW2*(0.2+Math.random()*0.6), fy=vH2*(0.1+Math.random()*0.1);
+        const ddist=Math.hypot(targetX-fx,targetY-fy);
+        listerLasers.push({x:fx,y:fy,x2:PW+vW2*0.5,y2:vH2*0.52,
+          vx:(targetX-fx)/ddist*6,vy:(targetY-fy)/ddist*6,type:'orb',born:Date.now(),life:2200});
+      } else {
+        const fy=vH2*0.62;
+        listerLasers.push({x:PW+vW2*0.1,y:fy,x2:PW+vW2*0.5,y2:fy+(Math.random()-0.5)*30,
+          vx:0,vy:0,type:'bolt',born:Date.now(),life:600});
+      }
+      shots++;
+      if(!listerShieldOn) ship.hull=Math.max(0,ship.hull-3);
+      if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Mech fighters available for transport.',false);}
+      return;
+    }
+    // Show charge-up on tank 400ms before bolt
+    if(!fromDrone){
+      const cu=pool[shots%pool.length];
+      const cs2=cu.s||1, cdir=cu.facingRight?1:-1;
+      listerCharging.push({x:cu.x+cdir*60*cs2*100,y:cu.y-55*cs2*100,born:Date.now()});
+      setTimeout(()=>{ listerCharging.shift(); }, 500);
+    }
     const u=pool[shots%pool.length];
-    const x1=u.x, y1=fromDrone?u.y:u.y-(90*(u.s||1)*0.55); // turret height
-    const dx=targetX-x1, dy=targetY-y1, dist=Math.hypot(dx,dy);
-    const spd=fromDrone?6:0; // orbs move, bolts are instant
+    let x1,y1,x2,y2,vx2,vy2;
+    if(fromDrone){
+      // Drone fires orb downward toward ship center
+      x1=u.x; y1=u.y;
+      x2=targetX; y2=targetY;
+      const ddx=x2-x1,ddy=y2-y1,ddist=Math.hypot(ddx,ddy);
+      vx2=ddx/ddist*6; vy2=ddy/ddist*6;
+    } else {
+      // Tank: horizontal lightning bolt across the full screen (MechWars style)
+      const s2=u.s||1;
+      const dir=u.facingRight?1:-1;
+      // Exact barrel tip accounting for turret rotation angle
+      // Pivot = tank center + dir*60s horizontal, 55s up
+      const pivotX=u.x+dir*60*s2;
+      const pivotY=u.y-55*s2;
+      // Tip = pivot + rotated barrel vector (87s, rotated by aim)
+      const curAim2=_tankAim[(u.idx||0)]||0;
+      const bpX=pivotX+dir*87*s2*Math.cos(curAim2);
+      const bpY=pivotY+87*s2*Math.sin(curAim2);
+      x1=bpX; y1=bpY;
+      // Bolt fires horizontally from barrel tip to opposite screen edge
+      const vW2=CV.width-PW*2;
+      x2=u.facingRight ? PW+vW2-2 : PW+2;
+      y2=bpY; // bolt exits at same height as barrel tip
+      vx2=0; vy2=0;
+    }
     listerLasers.push({
-      x:x1, y:y1, x2:targetX, y2:targetY,
-      vx:fromDrone?dx/dist*spd:0, vy:fromDrone?dy/dist*spd:0,
+      x:x1, y:y1, x2:x2, y2:y2,
+      vx:vx2, vy:vy2,
       type:fromDrone?'orb':'bolt',
-      born:Date.now(), life:fromDrone?2200:800,
+      born:Date.now(), life:fromDrone?2200:600,
     });
     shots++;
-    if(!listerShieldOn) ship.hull=Math.max(0,ship.hull-3);
+    if(!listerShieldOn){
+      ship.hull=Math.max(0,ship.hull-3);
+      _shipImpactFlash=Date.now()+350;
+      _shipImpactShake=Date.now()+600; // cockpit shake
+      try{ // impact thud sound
+        const ac2=getAudio();
+        const imp=ac2.createOscillator(); imp.type='square'; imp.frequency.setValueAtTime(80,ac2.currentTime); imp.frequency.exponentialRampToValueAtTime(25,ac2.currentTime+0.18);
+        const ig=ac2.createGain(); ig.gain.setValueAtTime(0.35,ac2.currentTime); ig.gain.exponentialRampToValueAtTime(0.001,ac2.currentTime+0.22);
+        imp.connect(ig); ig.connect(ac2.destination); imp.start(); imp.stop(ac2.currentTime+0.25);
+      }catch(e){}
+    }
     if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Mech fighters available for transport.',false);}
   },1500);
 }
-
-function scheduleListerBriefing_(){
-  if(gs!=='LANDED'||!seqBody||seqBody.srf!=='lister') return;
-  listerPhase=0;listerShieldOn=false;listerMechsTransported=0;listerLasers=[];
-  const say=(txt,delay)=>setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')speak(txt,true);},delay);
-  say('Surface contact. Lister-Alpha. Barren metallic body.',1000);
-  say('Scanning. Energy signatures detected. Significant.',7000);
-  say('Artificial intelligence confirmed.',13000);
-  say('Classification: Supreme Intelligence. Threat level: Extreme Hostile.',19000);
-  say('Raising defensive shields now.',25000);
-  setTimeout(()=>{
-    if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister'){
-      listerShieldOn=true;
-      playShieldUp();
-      // Flash shield on frame for 2s
-      listerShieldFlash=Date.now()+2000;
-    }
-  },26500);
-  say('Shields online.',27000);
-  say('Hostile units mobilising. Recommend immediate departure.',33000);
-  setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')listerStartFiring();},39000);
-}
-
 </script>
+</body>
+</html>
