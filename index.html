@@ -804,16 +804,38 @@ function getUKVoice(){
 }
 if(voiceSynth.onvoiceschanged!==undefined) voiceSynth.onvoiceschanged=()=>{};
 
+// Chrome kills speechSynthesis queue after ~15s — pause/resume every 10s keeps it alive
+let _synthKeepAlive=setInterval(()=>{
+  if(voiceSynth.speaking){ voiceSynth.pause(); voiceSynth.resume(); }
+},10000);
+
+// Split long text at sentence boundaries — Chrome cuts off after ~220 chars
+function _splitText(text){
+  if(text.length<=220) return [text];
+  const chunks=[];
+  const sentences=text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[text];
+  let cur='';
+  sentences.forEach(s=>{ if((cur+s).length>220){ if(cur.trim()) chunks.push(cur.trim()); cur=s; } else cur+=s; });
+  if(cur.trim()) chunks.push(cur.trim());
+  return chunks.length?chunks:[text];
+}
+
 function speak(text,priority=false){
   if(!voiceOn) return;
   if(!priority&&voiceCooldown>Date.now()) return;
   if(voiceSynth.speaking&&!priority) return;
   if(priority) voiceSynth.cancel();
-  const utt=new SpeechSynthesisUtterance(text);
-  const v=getUKVoice(); if(v) utt.voice=v;
-  utt.lang='en-GB'; utt.rate=0.92; utt.pitch=0.85; utt.volume=0.85;
-  voiceSynth.speak(utt);
-  voiceCooldown=Date.now()+(priority?5000:4000);
+  const voice=getUKVoice();
+  const chunks=_splitText(text);
+  // Estimate cooldown from text length (avg 150 chars/5s at rate 0.92)
+  const estMs=Math.max(priority?5000:4000, Math.round(text.length*33));
+  chunks.forEach(chunk=>{
+    const utt=new SpeechSynthesisUtterance(chunk);
+    if(voice) utt.voice=voice;
+    utt.lang='en-GB'; utt.rate=0.92; utt.pitch=0.85; utt.volume=0.85;
+    voiceSynth.speak(utt);
+  });
+  voiceCooldown=Date.now()+estMs;
 }
 
 function updateVoice(){
