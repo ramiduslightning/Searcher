@@ -201,11 +201,13 @@ body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--
 #arrive-overlay{
   position:absolute;
   bottom:0; left:var(--pw); right:var(--pw);
+  height:auto;
   z-index:10;
-  background:linear-gradient(180deg,rgba(4,2,0,0) 0%,rgba(6,3,0,.82) 18%,rgba(6,3,0,.92) 100%);
+  background:linear-gradient(180deg,rgba(4,2,0,0) 0%,rgba(6,3,0,.88) 30%,rgba(6,3,0,.96) 100%);
   display:none;flex-direction:column;align-items:center;justify-content:flex-end;
-  padding-bottom:14px; padding-top:40px;
-  gap:6px; pointer-events:none;
+  padding-bottom:12px; padding-top:28px;
+  gap:5px; pointer-events:none;
+  max-height:38%;
 }
 #arrive-overlay.show{display:flex;}
 #arrive-title{font-family:var(--disp);font-size:18px;font-weight:700;letter-spacing:6px;color:var(--green);text-shadow:0 0 18px rgba(0,160,48,.45);}
@@ -403,15 +405,15 @@ body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--
       <div class="seq-steps"><div class="sq" id="sq0">DECEL</div><div class="sq" id="sq1">ALIGN</div><div class="sq" id="sq2">DESCEND</div><div class="sq" id="sq3">TOUCH</div></div>
       <div id="seq-alt-lbl">ALTITUDE</div><div id="seq-alt">— u</div>
     </div>
-    <div id="arrive-overlay">
-      <div id="arrive-title">TOUCHDOWN</div>
-      <div id="arrive-sub">SURFACE CONTACT CONFIRMED</div>
-      <div id="arrive-stats">
+    <div id="arrive-overlay" style="display:none!important">
+      <div id="arrive-title" style="display:none"></div>
+      <div id="arrive-sub" style="display:none"></div>
+      <div id="arrive-stats" style="display:none">
         <div class="as"><div class="as-k">BODY</div><div class="as-v" id="as-body">—</div></div>
         <div class="as"><div class="as-k">FUEL</div><div class="as-v" id="as-fuel">—</div></div>
         <div class="as"><div class="as-k">HULL</div><div class="as-v" id="as-hull">—</div></div>
       </div>
-      <div class="hint-key" id="arrive-hint">PRESS LAUNCH TO DEPART</div>
+      <div class="hint-key" id="arrive-hint" style="display:none">PRESS LAUNCH TO DEPART</div>
     </div>
     <div id="key-hint">DRAG WHEEL TO STEER · CENTER = THRUST · SPACE · F · TAB</div>
   </div>
@@ -690,6 +692,74 @@ function playAlert(){
   }catch(e){}
 }
 
+function playAtmoEntry(){
+  try{
+    const ac=getAudio();
+    const bufLen=ac.sampleRate*8;
+    const buf=ac.createBuffer(1,bufLen,ac.sampleRate);
+    const data=buf.getChannelData(0);
+    for(let i=0;i<bufLen;i++) data[i]=(Math.random()*2-1);
+    const noise=ac.createBufferSource(); noise.buffer=buf; noise.loop=false;
+    const lpf=ac.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=120; lpf.Q.value=2;
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0,ac.currentTime);
+    g.gain.linearRampToValueAtTime(0.35,ac.currentTime+0.8);
+    g.gain.setValueAtTime(0.35,ac.currentTime+5);
+    g.gain.linearRampToValueAtTime(0,ac.currentTime+8);
+    noise.connect(lpf); lpf.connect(g); g.connect(ac.destination);
+    noise.start();
+    const mid=ac.createOscillator(); mid.type='sawtooth'; mid.frequency.value=55;
+    mid.frequency.linearRampToValueAtTime(45,ac.currentTime+4);
+    const mg=ac.createGain();
+    mg.gain.setValueAtTime(0,ac.currentTime);
+    mg.gain.linearRampToValueAtTime(0.12,ac.currentTime+0.5);
+    mg.gain.linearRampToValueAtTime(0,ac.currentTime+8);
+    mid.connect(mg); mg.connect(ac.destination);
+    mid.start(); mid.stop(ac.currentTime+8);
+    setTimeout(()=>{
+      try{
+        const ac2=getAudio();
+        const thudBuf=ac2.createBuffer(1,ac2.sampleRate*0.6,ac2.sampleRate);
+        const td=thudBuf.getChannelData(0);
+        for(let i=0;i<td.length;i++) td[i]=(Math.random()*2-1)*Math.exp(-i/(ac2.sampleRate*0.15));
+        const thud=ac2.createBufferSource(); thud.buffer=thudBuf;
+        const tlpf=ac2.createBiquadFilter(); tlpf.type='lowpass'; tlpf.frequency.value=80;
+        const tg=ac2.createGain(); tg.gain.value=0.7;
+        thud.connect(tlpf); tlpf.connect(tg); tg.connect(ac2.destination);
+        thud.start();
+      }catch(e){}
+    },300);
+  }catch(e){}
+}
+
+function playLaunchWhoosh(){
+  try{
+    const ac=getAudio();
+    const o=ac.createOscillator(); o.type='sawtooth';
+    o.frequency.setValueAtTime(40,ac.currentTime);
+    o.frequency.linearRampToValueAtTime(180,ac.currentTime+3.5);
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0,ac.currentTime);
+    g.gain.linearRampToValueAtTime(0.28,ac.currentTime+0.4);
+    g.gain.setValueAtTime(0.28,ac.currentTime+2.5);
+    g.gain.linearRampToValueAtTime(0,ac.currentTime+4.5);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime+5);
+    const bufLen=ac.sampleRate*4;
+    const buf=ac.createBuffer(1,bufLen,ac.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<bufLen;i++) d[i]=(Math.random()*2-1)*Math.min(1,i/(ac.sampleRate*0.3));
+    const n=ac.createBufferSource(); n.buffer=buf;
+    const hpf=ac.createBiquadFilter(); hpf.type='highpass'; hpf.frequency.value=200;
+    const ng=ac.createGain();
+    ng.gain.setValueAtTime(0.18,ac.currentTime);
+    ng.gain.linearRampToValueAtTime(0,ac.currentTime+4);
+    n.connect(hpf); hpf.connect(ng); ng.connect(ac.destination);
+    n.start();
+  }catch(e){}
+}
+
+
 function playTargetCycle(){
   playBeep(1400,0.08,0.1);
 }
@@ -718,6 +788,7 @@ let voiceOn=true;
 const voiceSynth=window.speechSynthesis;
 let lastVoiceGs='';
 let lastVoiceApproach='';
+let _lastAutopilotTarget=''; // suppress approach announce for AP-delivered body
 let lastVoiceSpeed=-1;
 let lastVoiceFuel=101;
 let voiceCooldown=0;
@@ -761,12 +832,12 @@ function updateVoice(){
     lastVoiceGs=gs; return;
   }
 
-  if(near&&gs==='FLIGHT'&&near.name!==lastVoiceApproach){
+  if(near&&gs==='FLIGHT'&&!autopilotOn&&near.name!==lastVoiceApproach&&near.name!==_lastAutopilotTarget){
     const act=near.isStation?'Docking available. Select dock in actions.':'Landing available. Select land in actions.';
     speak(`Approaching ${near.name}. ${act}`);
     lastVoiceApproach=near.name; return;
   }
-  if(!near) lastVoiceApproach='';
+  if(!near){ lastVoiceApproach=''; _lastAutopilotTarget=''; }
 
   if(ship.thrOn&&gs==='FLIGHT'&&spd>0.5){
     const sr=Math.round(spd*10)/10;
@@ -806,6 +877,7 @@ document.addEventListener('keyup',e=>{ K[e.key.toLowerCase()]=false; });
 
 // ── BODIES ────────────────────────────────────────────────────────────────────
 // ── LISTER-ALPHA STATE ──
+let cinematicStart=0;
 let impactStart=0; // wall-clock ms when landing impact begins
 let listerShieldOn=false;
 let listerMechsTransported=0;
@@ -834,6 +906,13 @@ function cycleTarget(){
   const t=target();
   const dx=t.x-ship.x, dy=t.y-ship.y;
   steerTarget=Math.atan2(dy,dx);
+  // Update nav panel immediately
+  const nnm=document.getElementById('nav-nm');
+  const ntp=document.getElementById('nav-tp');
+  if(nnm) nnm.textContent=t.name;
+  if(ntp) ntp.textContent=t.type||'';
+  _lastAutopilotTarget=''; // allow fresh approach announce for new target
+  lastVoiceApproach='';    // reset so new target can announce
   if(gs==='FLIGHT'){
     if(!_helmAnnouncedOnce){ speak('Target: '+t.name+'. Helm adjusting.',false); _helmAnnouncedOnce=true; }
     else { speak('Target: '+t.name+'.',false); }
@@ -866,6 +945,7 @@ function updateAutopilot(){
       steerTarget=Math.atan2(t.y-ship.y,t.x-ship.x);
       if(typeof lastVoiceApproach!=='undefined') lastVoiceApproach='';
       speak(t.name+' in range. You have control.',true);
+      _lastAutopilotTarget=t.name; lastVoiceApproach=t.name;
     }
     return;
   }
@@ -1004,7 +1084,7 @@ let surfaceAlt=0;
 let landStartAlt=0; // altitude when landing sequence phase 2 begins
 
 function startSeq(b, mode='LAND'){
-  seqBody=b; seqMode=mode; gs=(mode==='LAUNCH'?'LAUNCHING':'LANDING'); seqPhase=0; seqTimer=0; surfaceT=(mode==='LAUNCH'?1:0); surfaceAlt=0; landStartAlt=0; impactStart=0; listerCinStart=0; listerShieldOn=false; listerPhase=0; listerLasers=[];
+  seqBody=b; seqMode=mode; gs=(mode==='LAUNCH'?'LAUNCHING':'LANDING'); seqPhase=0; seqTimer=0; surfaceT=(mode==='LAUNCH'?1:0); surfaceAlt=0; landStartAlt=0; cinematicStart=Date.now(); impactStart=0; listerCinStart=0; listerShieldOn=false; listerPhase=0; listerLasers=[];
   setThrOff();
   ship.fa=true; // silent drift damping during auto sequence
   document.getElementById('seq-panel').style.display='flex';
@@ -1014,10 +1094,12 @@ function startSeq(b, mode='LAND'){
   document.getElementById('btn-dock').style.display='none';
   document.getElementById('btn-abort').style.display='flex';
   sqUI(0);
-  speak('Computer control engaged. Initiating '+(mode==='LAUNCH'?'launch':(b.isStation?'docking':'landing'))+' sequence on '+b.name+'.',true);
+  // updateVoice() handles announcing LANDING/LAUNCH state changes
+  if(mode==='LAUNCH') speak('Computer control engaged. Initiating launch sequence on '+b.name+'.',true);
 }
 function startLaunch(){
   if(!seqBody || seqBody.isStation) return;
+  playLaunchWhoosh();
   document.getElementById('arrive-overlay').className='';
   document.getElementById('btn-launch').style.display='none';
   document.getElementById('btn-undock').style.display='none';
@@ -1058,7 +1140,7 @@ function updateSeq(){
       ship.vx=Math.cos(away)*ds; ship.vy=Math.sin(away)*ds;
       ship.x+=ship.vx; ship.y+=ship.vy;
       surfaceAlt=launchAlt; surfaceT=Math.max(0.78, 1-launchAlt/1700);
-      document.getElementById('seq-alt').textContent=Math.round(launchAlt)+' u';
+      const _lAlt1=Math.round(launchAlt/260*800); document.getElementById('seq-alt').textContent=_lAlt1.toLocaleString()+' m';
       if(Math.random()<.7) spawnP(true);
       if(launchAlt>=260){ seqPhase=2; seqTimer=0; sqUI(2); }
       return;
@@ -1069,7 +1151,7 @@ function updateSeq(){
       ship.vx=Math.cos(away)*ds; ship.vy=Math.sin(away)*ds;
       ship.x+=ship.vx; ship.y+=ship.vy;
       surfaceAlt=launchAlt; surfaceT=Math.max(0, 1-launchAlt/3200);
-      document.getElementById('seq-alt').textContent=Math.round(launchAlt)+' u';
+      const _lAlt2=Math.round(800+(launchAlt-280)/(2300-280)*7200); document.getElementById('seq-alt').textContent=_lAlt2.toLocaleString()+' m';
       if(Math.random()<.85) spawnP(true);
       if(launchAlt>=2300){ seqPhase=3; seqTimer=0; sqUI(3); }
       return;
@@ -1080,6 +1162,8 @@ function updateSeq(){
     document.getElementById('seq-panel').style.display='none';
     document.getElementById('descent-glow').className='';
     document.getElementById('btn-abort').style.display='none';
+    const _bt2=document.getElementById('btn-transport'); if(_bt2){_bt2.style.display='none';_bt2.disabled=false;_bt2.textContent='⬆ TRANSPORT MECHS';}
+    listerShieldOn=false; listerPhase=0; listerLasers=[]; listerMechsTransported=0; listerCinStart=0;
     speak('Launch complete. Cleared for navigation.',true);
     return;
   }
@@ -1093,14 +1177,14 @@ function updateSeq(){
       ship.x+=ship.vx; ship.y+=ship.vy;
       if(Math.random()<.35) spawnP(false);
     } else {
-      ship.vx=0; ship.vy=0; seqPhase=1; seqTimer=0; sqUI(1);
+      ship.vx=0; ship.vy=0; seqPhase=1; seqTimer=0; sqUI(1); landStartAlt=Math.max(500, distB(seqBody)-seqBody.r);
     }
 
   } else if(seqPhase===1){ // ALIGN toward planet
     const want=Math.atan2(b.y-ship.y, b.x-ship.x);
     const da=normA(want-ship.angle);
     ship.angle+=da*0.18; steerTarget=ship.angle;
-    if(Math.abs(da)<0.04){ ship.angle=want; steerTarget=want; seqPhase=2; seqTimer=0; sqUI(2); }
+    if(Math.abs(da)<0.04){ ship.angle=want; steerTarget=want; seqPhase=2; seqTimer=0; sqUI(2); if(landStartAlt<200) landStartAlt=Math.max(500, distB(seqBody)-seqBody.r); cinematicStart=Date.now(); }
 
   } else if(seqPhase===2){ // ENTRY / FLYOVER / FINAL DESCENT
     const want=Math.atan2(b.y-ship.y, b.x-ship.x);
@@ -1121,7 +1205,7 @@ function updateSeq(){
     ship.x+=ship.vx; ship.y+=ship.vy;
     if(Math.random()<(b.isStation?0.4:0.52)) spawnP(false);
     document.getElementById('descent-glow').className='on';
-    document.getElementById('seq-alt').textContent=Math.max(0,Math.round(alt))+' u';
+    const _la=landStartAlt>0?Math.round(Math.max(0,alt)/landStartAlt*8000):Math.round(alt); document.getElementById('seq-alt').textContent=_la.toLocaleString()+' m';
 
     if(!b.isStation){
       // Record altitude when we enter phase 2 so blend is relative to approach distance
@@ -1137,8 +1221,8 @@ function updateSeq(){
       ship.vx=0; ship.vy=0;
       surfaceT=1; surfaceAlt=0;
       seqPhase=3; seqTimer=0; sqUI(3); impactStart=Date.now();
-      if(!b.isStation) document.getElementById('sq3').textContent='TOUCH';
-      speak('Touchdown confirmed on '+b.name+'. Engines offline.',true);
+      if(!b.isStation){ document.getElementById('sq3').textContent='TOUCH'; if(b.srf!=='lister') playAtmoEntry(); }
+      // Touchdown voice fires from updateVoice when gs=LANDED
     }
 
   } else if(seqPhase===3){ // HOLD at surface, then show UI
@@ -1160,20 +1244,36 @@ function updateSeq(){
 }
 
 function showArriveUI(b){
-  document.getElementById('arrive-title').textContent=b.isStation?'DOCKED':'TOUCHDOWN';
-  document.getElementById('arrive-sub').textContent=b.isStation?'DOCKING CLAMPS ENGAGED — FUEL RESUPPLY ACTIVE':'SURFACE CONTACT CONFIRMED';
-  document.getElementById('as-body').textContent=b.name;
-  document.getElementById('as-fuel').textContent=Math.round(ship.fuel)+'%';
-  document.getElementById('as-hull').textContent=Math.round(ship.hull)+'%';
   if(b.isStation) ship.fuel=Math.min(100,ship.fuel+35);
-  document.getElementById('arrive-overlay').className='show';
-  document.getElementById('btn-launch').style.display=b.isStation?'none':'flex';
-  document.getElementById('btn-undock').style.display=b.isStation?'flex':'none';
-  document.getElementById('arrive-hint').textContent=b.isStation?'PRESS UNDOCK TO DEPART':'PRESS LAUNCH TO DEPART';
-  document.getElementById('btn-transport').style.display='none';
-  if(!b.isStation && b.srf==='lister') setTimeout(scheduleListerBriefing_,3000);
+  // Show correct action buttons
+  const btnLaunch=document.getElementById('btn-launch');
+  const btnUndock=document.getElementById('btn-undock');
+  if(btnLaunch) btnLaunch.style.display=b.isStation?'none':'flex';
+  if(btnUndock) btnUndock.style.display=b.isStation?'flex':'none';
+  const btnTransport=document.getElementById('btn-transport');
+  if(btnTransport) btnTransport.style.display='none';
+  // Planet surface briefings
+  if(!b.isStation && b.srf==='ocean') setTimeout(scheduleVesperBriefing_, 2000);
+  if(!b.isStation && b.srf==='lister') setTimeout(scheduleListerBriefing_, 6000);
 }
 // already in append block
+function scheduleVesperBriefing_(){
+  // Wait until fully LANDED then deliver lines with natural spacing
+  const lines=[
+    { delay:3000,  text:'Atmospheric analysis complete. Surface composition: sulphur dioxide, eighty four percent. Full EVA protocol required.' },
+    { delay:14000, text:'Biometric scan confirms indigenous fauna. Designating species: Cerathke. Permian-class amphibian. Semi-aquatic.' },
+    { delay:25000, text:'Neural complexity elevated. Cortical scan indicates abstract reasoning. Cerathke is classified sentient.' },
+    { delay:36000, text:'No manufactured structures detected. No energy signatures consistent with technology. Pre-technological civilisation.' },
+    { delay:47000, text:'Flora analysis complete. Ground organisms designated Sulphur Moss. Bioluminescent. Possibly symbiotic with Cerathke.' },
+    { delay:58000, text:'Threat assessment: negative. Curiosity response observed. Vesper is a friendly world.' },
+  ];
+  lines.forEach(({delay,text})=>{
+    setTimeout(()=>{
+      if(gs==='LANDED' && seqBody && seqBody.srf==='ocean') speak(text, false);
+    }, delay);
+  });
+}
+
 function depart(){
   if(gs==='LANDED' && seqBody && !seqBody.isStation){ startLaunch(); return; }
   gs='FLIGHT';seqBody=null; surfaceT=0; surfaceAlt=0; landStartAlt=0; seqMode='LAND';
@@ -1386,54 +1486,177 @@ function drawScene(){
 
 // ── DRAW PLANET ───────────────────────────────────────────────────────────────
 // Procedural texturing using canvas to simulate surface features
+function _drawVesperSphere(px,py,sr,worldRot=0){
+  // Shared Saturn-style sphere renderer
+  // worldRot: pass -ship.angle-PI/2 to keep bands horizontal in space view; 0 for cinematic
+  const sg=CX.createRadialGradient(px-sr*.22,py-sr*.25,0,px,py,sr);
+  sg.addColorStop(0,'#d4b878'); sg.addColorStop(.25,'#c4a860');
+  sg.addColorStop(.55,'#a88840'); sg.addColorStop(.82,'#8a6828'); sg.addColorStop(1,'#4a3410');
+  CX.fillStyle=sg; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+
+  // Counter-rotate so bands stay horizontal on screen regardless of ship heading
+  CX.save();
+  CX.translate(px,py); CX.rotate(-worldRot); CX.translate(-px,-py);
+
+  // Atmospheric bands
+  [{y:-.62,w:.06,c:'rgba(140,105,45,.35)'},{y:-.46,w:.10,c:'rgba(165,128,55,.28)'},
+   {y:-.28,w:.14,c:'rgba(125,95,38,.32)'}, {y:-.08,w:.20,c:'rgba(210,175,80,.22)'},
+   {y:.14, w:.14,c:'rgba(128,98,40,.30)'}, {y:.32, w:.10,c:'rgba(162,125,52,.25)'},
+   {y:.48, w:.08,c:'rgba(145,110,44,.28)'},{y:.62, w:.06,c:'rgba(110,82,30,.22)'},
+  ].forEach(({y,w,c})=>{
+    const by=py+y*sr, bh=w*sr;
+    const lg=CX.createLinearGradient(px,by-bh,px,by+bh);
+    lg.addColorStop(0,'rgba(0,0,0,0)'); lg.addColorStop(.5,c); lg.addColorStop(1,'rgba(0,0,0,0)');
+    CX.fillStyle=lg; CX.fillRect(px-sr,by-bh,sr*2,bh*2);
+  });
+  // Equatorial bright zone
+  const ez=CX.createLinearGradient(px,py-sr*.12,px,py+sr*.12);
+  ez.addColorStop(0,'rgba(0,0,0,0)'); ez.addColorStop(.5,'rgba(228,200,120,.28)'); ez.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=ez; CX.fillRect(px-sr,py-sr*.12,sr*2,sr*.24);
+  // North pole blue tint
+  const np=CX.createRadialGradient(px,py-sr*.7,0,px,py-sr*.6,sr*.3);
+  np.addColorStop(0,'rgba(80,120,160,.18)'); np.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=np; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+  // Ring shadow on sphere
+  const rsh=CX.createLinearGradient(px,py,px,py+sr*.18);
+  rsh.addColorStop(0,'rgba(0,0,0,0)'); rsh.addColorStop(.5,'rgba(0,0,0,.22)'); rsh.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=rsh; CX.fillRect(px-sr,py,sr*2,sr*.18);
+  CX.restore();
+
+  // Specular highlight (in screen space — doesn't rotate)
+  const sp=CX.createRadialGradient(px-sr*.28,py-sr*.30,0,px-sr*.1,py-sr*.1,sr*.75);
+  sp.addColorStop(0,'rgba(255,240,180,.20)'); sp.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=sp; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+  // Terminator
+  const tm=CX.createRadialGradient(px+sr*.5,py+sr*.45,sr*.1,px+sr*.3,py+sr*.28,sr*1.05);
+  tm.addColorStop(0,'rgba(0,0,0,.55)'); tm.addColorStop(.55,'rgba(0,0,0,.20)'); tm.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=tm; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+}
+
 function drawPlanet(b,px,py,sr){
   if(sr<1.5) return;
-  // Lister-Alpha: grey moon with red city lights
+  // Lister-Alpha: dark grey moon with red city lights
   if(b.srf==='lister'){
     const worldRot=-ship.angle-Math.PI/2;
+    // Grey moon sphere
     CX.save(); CX.beginPath(); CX.arc(px,py,sr,0,Math.PI*2); CX.clip();
-    const lg=CX.createRadialGradient(px-sr*.22,py-sr*.25,0,px,py,sr);
-    lg.addColorStop(0,'#525260'); lg.addColorStop(.35,'#38383e'); lg.addColorStop(.7,'#22222a'); lg.addColorStop(1,'#0e0e14');
+    const lg=CX.createRadialGradient(px-sr*.25,py-sr*.28,0,px,py,sr);
+    lg.addColorStop(0,'#484850'); lg.addColorStop(.4,'#30303a'); lg.addColorStop(.75,'#1e1e26'); lg.addColorStop(1,'#0a0a10');
     CX.fillStyle=lg; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+    // Counter-rotate for craters/lights
     CX.save(); CX.translate(px,py); CX.rotate(-worldRot); CX.translate(-px,-py);
-    [{cx:.20,cy:-.25,r:.13},{cx:-.28,cy:.18,r:.09},{cx:.38,cy:.22,r:.07}].forEach(cr=>{
-      const cg=CX.createRadialGradient(px+cr.cx*sr,py+cr.cy*sr,0,px+cr.cx*sr,py+cr.cy*sr,cr.r*sr);
-      cg.addColorStop(0,'rgba(0,0,0,.5)'); cg.addColorStop(1,'rgba(0,0,0,0)');
-      CX.fillStyle=cg; CX.beginPath(); CX.ellipse(px+cr.cx*sr,py+cr.cy*sr,cr.r*sr,cr.r*sr*.55,0,0,Math.PI*2); CX.fill();
+    // Craters
+    [{cx:.18,cy:-.22,r:.14},{cx:-.30,cy:.15,r:.10},{cx:.40,cy:.28,r:.08},{cx:-.10,cy:-.45,r:.09},{cx:.25,cy:.40,r:.06}].forEach(cr=>{
+      const cg=CX.createRadialGradient(px+cr.cx*sr,py+cr.cy*sr,sr*cr.r*.1,px+cr.cx*sr,py+cr.cy*sr,sr*cr.r);
+      cg.addColorStop(0,'rgba(0,0,0,.55)'); cg.addColorStop(.7,'rgba(20,18,22,.25)'); cg.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=cg; CX.beginPath(); CX.arc(px+cr.cx*sr,py+cr.cy*sr,sr*cr.r,0,Math.PI*2); CX.fill();
     });
+    // Red city lights — clusters of glowing dots like looking down at a robot city at night
+    // City lights — varied sizes, spread across moon, alternating pulse/steady
     const now_=Date.now()*0.001;
-    [{cx:-.35,cy:.28,p:true,sz:2.2},{cx:.32,cy:-.28,p:false,sz:1.1},
-     {cx:-.12,cy:.44,p:true,sz:1.8},{cx:.42,cy:.18,p:false,sz:1.0},
-     {cx:-.40,cy:-.22,p:true,sz:2.4},{cx:.14,cy:.40,p:false,sz:1.2},
-     {cx:.36,cy:-.38,p:true,sz:2.0},{cx:-.42,cy:.06,p:false,sz:1.1}].forEach((cl,i)=>{
+    const cityLights=[
+      {cx:-.42,cy:-.28,r:.016,pulse:true, spd:2.1},{cx:.38,cy:-.38,r:.012,pulse:false,spd:0},
+      {cx:-.10,cy:.48, r:.014,pulse:true, spd:3.4},{cx:.44,cy:.22, r:.018,pulse:false,spd:0},
+      {cx:-.38,cy:.28, r:.010,pulse:true, spd:1.8},{cx:.22,cy:-.44,r:.015,pulse:false,spd:0},
+      {cx:.12,cy:.42,  r:.013,pulse:true, spd:2.8},{cx:-.44,cy:.04,r:.011,pulse:false,spd:0},
+      {cx:.38,cy:-.12, r:.016,pulse:true, spd:1.5},{cx:-.20,cy:-.42,r:.013,pulse:false,spd:0},
+    ];
+    cityLights.forEach((cl,i)=>{
       const lx=px+cl.cx*sr, ly=py+cl.cy*sr;
-      const pulse=cl.p?(0.25+Math.sin(now_*2.4+i*0.9)*0.75):0.88;
-      const r=sr*0.012*cl.sz;
-      CX.save(); CX.shadowColor='rgba(255,20,8,1)'; CX.shadowBlur=cl.p?r*4:r*2;
+      const pulse=cl.pulse?(0.25+Math.sin(now_*cl.spd+i*1.1)*0.75):0.88;
+      const r=sr*cl.r;
+      CX.save();
+      CX.shadowColor='rgba(255,20,8,1)';
+      CX.shadowBlur=cl.pulse?(r*5):(r*2.5);
       CX.fillStyle=`rgba(255,${18+i*4},${6+i*2},${0.5+pulse*0.5})`;
-      CX.beginPath(); CX.arc(lx,ly,r*(0.8+pulse*.5),0,Math.PI*2); CX.fill(); CX.restore();
+      CX.beginPath(); CX.arc(lx,ly,r*(0.8+pulse*.4),0,Math.PI*2); CX.fill();
+      // Small satellite dots around main light
+      if(i%3===0){
+        CX.shadowBlur=r*2;
+        for(let d=0;d<3;d++){
+          const dx=(((i*5+d*11)%15)-7)*sr*.03, dy2=(((i*9+d*7)%11)-5)*sr*.025;
+          CX.beginPath(); CX.arc(lx+dx,ly+dy2,r*.55,0,Math.PI*2); CX.fill();
+        }
+      }
+      CX.restore();
     });
-    CX.restore(); CX.restore();
+    CX.restore();
+    CX.restore();
+    // Atmosphere halo — faint grey
     if(b.atmT>0&&sr>5){
       const ar=sr*(1+b.atmT*.3);
       const ag=CX.createRadialGradient(px,py,sr*.9,px,py,ar);
-      ag.addColorStop(0,'rgba(100,90,110,.18)'); ag.addColorStop(1,'rgba(0,0,0,0)');
+      ag.addColorStop(0,'rgba(100,90,110,.2)'); ag.addColorStop(1,'rgba(0,0,0,0)');
       CX.beginPath(); CX.arc(px,py,ar,0,Math.PI*2); CX.fillStyle=ag; CX.fill();
     }
+    // Terminator shadow
     CX.save(); CX.beginPath(); CX.arc(px,py,sr,0,Math.PI*2); CX.clip();
     const ts=CX.createRadialGradient(px+sr*.5,py+sr*.45,sr*.1,px+sr*.3,py+sr*.28,sr*1.05);
     ts.addColorStop(0,'rgba(0,0,0,.6)'); ts.addColorStop(.55,'rgba(0,0,0,.25)'); ts.addColorStop(1,'rgba(0,0,0,0)');
     CX.fillStyle=ts; CX.fillRect(px-sr,py-sr,sr*2,sr*2); CX.restore();
-    // Label - counter-rotate so it reads correctly
-    if(sr>10){
-      const wR=-ship.angle-Math.PI/2;
-      CX.save(); CX.translate(px,py+sr+14); CX.rotate(-wR);
-      CX.fillStyle='rgba(140,140,158,.55)'; CX.font='9px "Share Tech Mono",monospace';
-      CX.textAlign='center'; CX.fillText(b.name,0,0); CX.restore();
-    }
+    if(sr>10){ const wRot=-ship.angle-Math.PI/2; CX.save(); CX.translate(px,py+sr+14); CX.rotate(-wRot); CX.fillStyle='rgba(140,140,158,.55)'; CX.font='9px "Share Tech Mono",monospace'; CX.textAlign='center'; CX.fillText(b.name,0,0); CX.restore(); }
     return;
   }
 
+  // Ocean (Vesper): 3-pass render — full rings, sphere occludes back, front rings on top
+  if(b.srf==='ocean'){
+    const worldRot=-ship.angle-Math.PI/2;
+
+    // PASS 1: Full rings (back half will be naturally occluded by planet sphere in pass 2)
+    CX.save();
+    CX.translate(px,py); CX.rotate(-worldRot); CX.scale(1,.22);
+    const rv=CX.createRadialGradient(0,0,sr*1.08,0,0,sr*2.08);
+    rv.addColorStop(0,'rgba(0,0,0,0)');
+    rv.addColorStop(.04,'rgba(195,180,138,.70)');
+    rv.addColorStop(.22,'rgba(210,195,150,.62)');
+    rv.addColorStop(.38,'rgba(155,142,105,.18)');
+    rv.addColorStop(.50,'rgba(188,172,132,.55)');
+    rv.addColorStop(.75,'rgba(152,138,100,.30)');
+    rv.addColorStop(.90,'rgba(118,108,80,.12)');
+    rv.addColorStop(1,'rgba(0,0,0,0)');
+    CX.beginPath(); CX.arc(0,0,sr*2.08,0,Math.PI*2); CX.fillStyle=rv; CX.fill();
+    CX.strokeStyle='rgba(0,0,0,.38)'; CX.lineWidth=Math.max(2,sr*.030);
+    CX.beginPath(); CX.arc(0,0,sr*1.55,0,Math.PI*2); CX.stroke();
+    CX.restore();
+
+    // PASS 2: Planet sphere — solid fill occludes the ring back half automatically
+    CX.save(); CX.beginPath(); CX.arc(px,py,sr,0,Math.PI*2); CX.clip();
+    _drawVesperSphere(px,py,sr,worldRot);
+    CX.restore();
+
+    // Atmosphere halo
+    if(b.atmT>0&&sr>5){
+      const ar=sr*(1+b.atmT*.5);
+      const ag=CX.createRadialGradient(px,py,sr*.88,px,py,ar);
+      ag.addColorStop(0,'rgba(200,165,60,.42)'); ag.addColorStop(.5,'rgba(175,140,40,.14)'); ag.addColorStop(1,'rgba(0,0,0,0)');
+      CX.beginPath(); CX.arc(px,py,ar,0,Math.PI*2); CX.fillStyle=ag; CX.fill();
+    }
+
+    // PASS 3: Front rings — clip excludes planet disk, draws only the outer portion in front
+    CX.save();
+    CX.translate(px,py); CX.rotate(-worldRot); CX.scale(1,.22);
+    CX.beginPath();
+    CX.rect(-sr*3,-sr*3,sr*6,sr*6);
+    CX.arc(0,0,sr,0,Math.PI*2,true);
+    CX.clip('evenodd');
+    const rv2=CX.createRadialGradient(0,0,sr*1.08,0,0,sr*2.08);
+    rv2.addColorStop(0,'rgba(0,0,0,0)');
+    rv2.addColorStop(.04,'rgba(195,180,138,.70)');
+    rv2.addColorStop(.22,'rgba(210,195,150,.62)');
+    rv2.addColorStop(.38,'rgba(155,142,105,.18)');
+    rv2.addColorStop(.50,'rgba(188,172,132,.55)');
+    rv2.addColorStop(.75,'rgba(152,138,100,.30)');
+    rv2.addColorStop(.90,'rgba(118,108,80,.12)');
+    rv2.addColorStop(1,'rgba(0,0,0,0)');
+    CX.beginPath(); CX.arc(0,0,sr*2.08,0,Math.PI); CX.lineTo(-sr*2.08,0); CX.closePath();
+    CX.fillStyle=rv2; CX.fill();
+    CX.strokeStyle='rgba(0,0,0,.35)'; CX.lineWidth=Math.max(2,sr*.028);
+    CX.beginPath(); CX.arc(0,0,sr*1.55,0,Math.PI); CX.stroke();
+    CX.restore();
+
+    if(sr>10){ CX.fillStyle='rgba(212,150,12,.55)'; CX.font='9px "Share Tech Mono",monospace'; CX.textAlign='center'; CX.fillText(b.name,px,py+sr+14); }
+    return;
+  }
   // ── COUNTER-ROTATION: bands and rings must always be horizontal on screen ──
   // The world is rotated by rot = -ship.angle - PI/2. We need to undo that
   // inside the planet so latitude bands stay horizontal regardless of heading.
@@ -1448,8 +1671,9 @@ function drawPlanet(b,px,py,sr){
   // ── BASE SPHERE GRADIENT ──
   const baseMap={
     earth: {base:'#1a5c28',mid:'#2e7d40',hi:'#3d9a52',lo:'#0e3a1a'},
-    ocean: {base:'#3a3410',mid:'#504810',hi:'#706818',lo:'#1e1a06'},
+    ocean: {base:'#a88840',mid:'#c4a860',hi:'#d4b878',lo:'#4a3410'},
     cracked:{base:'#7a3a1a',mid:'#a05830',hi:'#c87848',lo:'#4a1e08'},
+    lister:{base:'#1a1a20',mid:'#282830',hi:'#363640',lo:'#0a0a0e'},
     gas:   {base:'#7a5018',mid:'#a87030',hi:'#c89050',lo:'#4a2a08'},
     ice:   {base:'#5a8098',mid:'#8ab0c8',hi:'#b8d8e8',lo:'#304858'},
     station:{base:'#404050',mid:'#606075',hi:'#808095',lo:'#202028'},
@@ -1529,29 +1753,50 @@ function drawPlanet(b,px,py,sr){
     }
 
     if(b.srf==='ocean'){
-      // Glimmering ocean surface
-      const ow=CX.createLinearGradient(px-sr,py,px+sr,py);
-      // VESPER: thick sulfurous Venus-like cloud bands
-      const vbands=[
-        {y:-.52,w:.10,c:'rgba(210,195,30,.52)'},
-        {y:-.30,w:.14,c:'rgba(190,175,25,.42)'},
-        {y:-.10,w:.16,c:'rgba(200,185,28,.48)'},
-        {y:.12, w:.12,c:'rgba(175,165,20,.38)'},
-        {y:.32, w:.15,c:'rgba(195,180,26,.45)'},
-        {y:.52, w:.10,c:'rgba(165,155,18,.35)'},
-      ];
-      vbands.forEach(band=>{
+      // VESPER: exact same Saturn-style rendering as _drawVesperExterior
+      // Bands match the landing cinematic so planet looks identical in both views
+
+      // Repaint base sphere with exact Saturn gradient (overrides baseMap)
+      const satBase=CX.createRadialGradient(px-sr*.22,py-sr*.25,0,px,py,sr);
+      satBase.addColorStop(0,'#d4b878');
+      satBase.addColorStop(.25,'#c4a860');
+      satBase.addColorStop(.55,'#a88840');
+      satBase.addColorStop(.82,'#8a6828');
+      satBase.addColorStop(1,'#4a3410');
+      CX.fillStyle=satBase; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+
+      // Identical atmospheric bands
+      [
+        {y:-.62,w:.06,c:'rgba(140,105,45,.35)'},
+        {y:-.46,w:.10,c:'rgba(165,128,55,.28)'},
+        {y:-.28,w:.14,c:'rgba(125,95,38,.32)'},
+        {y:-.08,w:.20,c:'rgba(210,175,80,.22)'},
+        {y:.14, w:.14,c:'rgba(128,98,40,.30)'},
+        {y:.32, w:.10,c:'rgba(162,125,52,.25)'},
+        {y:.48, w:.08,c:'rgba(145,110,44,.28)'},
+        {y:.62, w:.06,c:'rgba(110,82,30,.22)'},
+      ].forEach(band=>{
         const by=py+band.y*sr, bh=band.w*sr;
         const lg=CX.createLinearGradient(px,by-bh,px,by+bh);
         lg.addColorStop(0,'rgba(0,0,0,0)'); lg.addColorStop(.5,band.c); lg.addColorStop(1,'rgba(0,0,0,0)');
         CX.fillStyle=lg; CX.fillRect(px-sr,by-bh,sr*2,bh*2);
       });
-      // Polar haze caps
-      [[-.78,.22],[.78,.22]].forEach(([cy,wr])=>{
-        const cg=CX.createRadialGradient(px,py+cy*sr,0,px,py+cy*sr,sr*wr);
-        cg.addColorStop(0,'rgba(220,205,50,.4)'); cg.addColorStop(1,'rgba(0,0,0,0)');
-        CX.fillStyle=cg; CX.beginPath(); CX.arc(px,py+cy*sr,sr*wr,0,Math.PI*2); CX.fill();
-      });
+      // Equatorial bright zone
+      const ezG2=CX.createLinearGradient(px,py-sr*.12,px,py+sr*.12);
+      ezG2.addColorStop(0,'rgba(0,0,0,0)'); ezG2.addColorStop(.5,'rgba(228,200,120,.28)'); ezG2.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=ezG2; CX.fillRect(px-sr,py-sr*.12,sr*2,sr*.24);
+      // North pole blue tint
+      const npG2=CX.createRadialGradient(px,py-sr*.7,0,px,py-sr*.6,sr*.3);
+      npG2.addColorStop(0,'rgba(80,120,160,.18)'); npG2.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=npG2; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
+      // Ring shadow
+      const rshG2=CX.createLinearGradient(px,py,px,py+sr*.18);
+      rshG2.addColorStop(0,'rgba(0,0,0,0)'); rshG2.addColorStop(.5,'rgba(0,0,0,.22)'); rshG2.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=rshG2; CX.fillRect(px-sr,py,sr*2,sr*.18);
+      // Specular highlight
+      const spG=CX.createRadialGradient(px-sr*.28,py-sr*.30,0,px-sr*.1,py-sr*.1,sr*.75);
+      spG.addColorStop(0,'rgba(255,240,180,.20)'); spG.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=spG; CX.fillRect(px-sr,py-sr,sr*2,sr*2);
     }
 
     if(b.srf==='cracked'){
@@ -1608,19 +1853,29 @@ function drawPlanet(b,px,py,sr){
     CX.rotate(-worldRot); // undo world rotation so rings stay horizontal
     CX.scale(1,.2);
     if(b.srf==='ocean'){
-      // VESPER: thin icy-sulfurous rings, narrower and more delicate than gas giant
-      const rv1=CX.createRadialGradient(0,0,sr*1.05,0,0,sr*1.7);
+      // VESPER: Rings drawn front-half only (bottom semicircle = in front of planet)
+      // Back half is blocked by planet sphere (planet drawn over rings below)
+      const rv1=CX.createRadialGradient(0,0,sr*1.08,0,0,sr*2.0);
       rv1.addColorStop(0,'rgba(0,0,0,0)');
-      rv1.addColorStop(.08,'rgba(210,195,120,.48)');
-      rv1.addColorStop(.35,'rgba(190,175,100,.35)');
-      rv1.addColorStop(.7,'rgba(160,148,80,.18)');
+      rv1.addColorStop(.04,'rgba(195,180,138,.70)');
+      rv1.addColorStop(.22,'rgba(210,195,150,.62)');
+      rv1.addColorStop(.38,'rgba(155,142,105,.18)');
+      rv1.addColorStop(.50,'rgba(188,172,132,.55)');
+      rv1.addColorStop(.75,'rgba(152,138,100,.30)');
+      rv1.addColorStop(.90,'rgba(118,108,80,.12)');
       rv1.addColorStop(1,'rgba(0,0,0,0)');
-      CX.beginPath(); CX.arc(0,0,sr*1.7,0,Math.PI*2); CX.fillStyle=rv1; CX.fill();
-      // Narrow bright inner gap line
-      CX.strokeStyle='rgba(220,210,140,.3)'; CX.lineWidth=Math.max(1,sr*.025);
-      CX.beginPath(); CX.arc(0,0,sr*1.2,0,Math.PI*2); CX.stroke();
-      CX.strokeStyle='rgba(180,168,90,.2)'; CX.lineWidth=Math.max(1,sr*.015);
-      CX.beginPath(); CX.arc(0,0,sr*1.48,0,Math.PI*2); CX.stroke();
+      // Front half only — bottom arc (0 → PI = lower half of ellipse when scaled)
+      CX.beginPath();
+      CX.moveTo(sr*2.0,0);
+      CX.arc(0,0,sr*2.0, 0, Math.PI);
+      CX.lineTo(0,0); CX.closePath();
+      CX.fillStyle=rv1; CX.fill();
+      // Cassini gap — front half only
+      CX.strokeStyle='rgba(0,0,0,.35)'; CX.lineWidth=Math.max(2,sr*.028);
+      CX.beginPath(); CX.arc(0,0,sr*1.55, 0, Math.PI); CX.stroke();
+      // F ring outline
+      CX.strokeStyle='rgba(200,188,148,.25)'; CX.lineWidth=Math.max(1,sr*.012);
+      CX.beginPath(); CX.arc(0,0,sr*2.08, 0, Math.PI); CX.stroke();
     } else {
       // Gas giant: full dense rings
       const r1=CX.createRadialGradient(0,0,sr*.9,0,0,sr*1.55);
@@ -1710,9 +1965,12 @@ function drawPlanet(b,px,py,sr){
 
 // ── SURFACE LANDING VIEW ──────────────────────────────────────────────────────
 function drawSurface(b, t, alt, isLaunch=false){
-  if(b.srf==='lister'){ drawListerLanding(b,t,alt,isLaunch); return; }
   if(b.srf==='ocean'){
     drawVesperLanding(b, t, alt, isLaunch);
+    return;
+  }
+  if(b.srf==='lister'){
+    drawListerLanding(b, t, alt, isLaunch);
     return;
   }
   const W=CV.width, H=CV.height;
@@ -1773,47 +2031,99 @@ function drawSurface(b, t, alt, isLaunch=false){
 }
 
 // ── VESPER DEDICATED LANDING PIPELINE ────────────────────────────────────────
+
 function drawVesperLanding(b, t, alt, isLaunch){
   const W=CV.width, H=CV.height;
   const vW=W-PW*2, vH=H-BH;
   const vx=PW, vy=0;
-  if(t<=0) return;
+  if(t<=0 && gs!=='LANDED') return;
   const now=Date.now()*0.001;
-
-  // prog: 0=just started, 1=fully landed
-  const prog = isLaunch ? (1-t) : t;
-
-  // Phase map:
-  //   prog 0.00→0.58  = EXTERIOR — ship approaching planet, full opacity
-  //   prog 0.50→0.72  = CROSSFADE — exterior fades, cockpit rises
-  //   prog 0.68→1.00  = COCKPIT — full view with aliens and plantlife
+  const nowMs=Date.now();
 
   CX.save();
   CX.beginPath(); CX.rect(vx,vy,vW,vH); CX.clip();
 
-  // Exterior view: always full opacity until crossfade, then fades
-  if(prog < 0.72){
-    const extAlpha = prog < 0.52 ? 1.0 : Math.max(0, 1-(prog-0.52)/0.20);
-    CX.globalAlpha = extAlpha;
-    _drawVesperExterior(vx,vy,vW,vH,prog,now,isLaunch);
-    CX.globalAlpha = 1;
-  }
-
-  // Cockpit view: fades in during crossfade
-  if(prog >= 0.55 && !isLaunch){
-    const cockpitAlpha = Math.min(1,(prog-0.55)/0.18);
-    CX.globalAlpha = cockpitAlpha;
-    _drawVesperCockpit(vx,vy,vW,vH,prog,now);
-    CX.globalAlpha = 1;
-  }
-
-  // Launch: show cockpit fading out, then exterior
   if(isLaunch){
-    if(prog < 0.45){
-      CX.globalAlpha = Math.min(1,(0.45-prog)/0.35);
-      _drawVesperCockpit(vx,vy,vW,vH,1-prog,now);
-      CX.globalAlpha = 1;
+    // Launch: cockpit fades out, then exterior
+    const prog=1-t;
+    if(prog < 0.5){
+      CX.globalAlpha=Math.min(1,(0.5-prog)/0.4);
+      _drawVesperCockpit(vx,vy,vW,vH,1,now);
+      CX.globalAlpha=1;
+    } else {
+      _drawVesperExterior(vx,vy,vW,vH,prog,now,true);
     }
+    CX.globalAlpha=1;
+    CX.restore();
+    return;
+  }
+
+  // ── PHASE 1: EXTERIOR SHIP CINEMATIC — always runs for 8s wall-clock ──
+  const extElapsed = nowMs - cinematicStart;
+  if(extElapsed < 8000){
+    const extProg = Math.min(1, extElapsed/8000);
+    _drawVesperExterior(vx,vy,vW,vH,extProg,now,false);
+    CX.globalAlpha=1; CX.restore();
+    return;
+  }
+
+  // ── PHASE 2: ATMOSPHERIC ENTRY SHAKE — runs for exactly 6 seconds wall-clock ──
+  // NOTE: deliberately ignores gs state — shake runs regardless of when LANDED is set
+  if(impactStart > 0){
+    const shakeElapsed = nowMs - impactStart;
+    if(shakeElapsed < 12000){
+      CX.fillStyle='#000'; CX.fillRect(vx,vy,vW,vH);
+
+      // Sustained turbulence — stays high the whole 6 seconds, only eases in final 0.8s
+      const t6 = shakeElapsed / 12000;
+      const shakeAmt = t6 < 0.06  ? t6/0.06                          // quick ramp up
+                     : t6 > 0.87  ? (1-t6)/0.13                      // ease out last 0.8s
+                     : 0.82 + Math.sin(shakeElapsed*0.033)*0.18;
+      const sx = (Math.random()-0.5)*24*shakeAmt;
+      const sy = (Math.random()-0.5)*18*shakeAmt;
+
+      // Entry flash
+      if(shakeElapsed < 500){
+        const flashA = Math.max(0, 1 - shakeElapsed/500);
+        CX.fillStyle=`rgba(255,220,100,${flashA*0.5})`;
+        CX.fillRect(vx,vy,vW,vH);
+      }
+
+      // Atmospheric plasma glow — pulses during descent
+      if(t6 > 0.08 && t6 < 0.8){
+        const glowA = Math.sin(t6*Math.PI)*0.15 + Math.sin(shakeElapsed*0.005)*0.06;
+        CX.fillStyle=`rgba(160,50,8,${Math.max(0,glowA)})`;
+        CX.fillRect(vx,vy,vW,vH);
+      }
+
+      // Scan-line tears — electrical interference the whole time
+      const tears = Math.floor(4 + shakeAmt*10);
+      for(let i=0;i<tears;i++){
+        const ly = vy + Math.random()*vH;
+        const lw = vW*(0.15+Math.random()*0.85);
+        const lx = vx + Math.random()*(vW-lw);
+        CX.fillStyle=`rgba(220,170,30,${Math.random()*0.28*shakeAmt})`;
+        CX.fillRect(lx+sx, ly+sy, lw, Math.max(1,Math.random()*2.5));
+      }
+
+      // "BRACE FOR LANDING" — shakes with screen throughout
+      const textA = t6 < 0.1 ? t6/0.1 : t6 > 0.88 ? (1-t6)/0.12 : 1.0;
+      CX.save();
+      CX.translate(sx*0.7, sy*0.5); // text shakes too
+      CX.font=`bold ${Math.round(vH*0.055)}px monospace`;
+      CX.textAlign='center';
+      CX.fillStyle=`rgba(212,150,12,${textA*0.75})`;
+      CX.fillText('BRACE FOR LANDING', vx+vW/2, vy+vH*0.52);
+      CX.restore();
+
+      CX.globalAlpha=1; CX.restore();
+      return;
+    }
+  }
+
+  // ── PHASE 3: COCKPIT — only when LANDED ──
+  if(gs==='LANDED'){
+    _drawVesperCockpit(vx,vy,vW,vH,1,now);
   }
 
   CX.globalAlpha=1;
@@ -1821,154 +2131,141 @@ function drawVesperLanding(b, t, alt, isLaunch){
 }
 
 function _drawVesperExterior(vx,vy,vW,vH,prog,now,isLaunch){
-  // prog: 0=far away, 1=atmosphere entry
-  // Planet stays in frame, grows as ship approaches
-  // Ship moves from upper-right toward planet center
+  const vProg = Math.min(1, prog * 0.75);
 
-  // Deep space background
-  const bgG=CX.createLinearGradient(vx,vy,vx,vy+vH);
-  bgG.addColorStop(0,'#000508'); bgG.addColorStop(1,'#01060c');
-  CX.fillStyle=bgG; CX.fillRect(vx,vy,vW,vH);
+  // ── SPACE BACKGROUND ──
+  CX.fillStyle='#000305'; CX.fillRect(vx,vy,vW,vH);
 
-  // Stars — subtle, fixed positions
-  for(let i=0;i<140;i++){
-    const sx=vx+(i*137+71)%vW;
-    const sy=vy+(i*97+43)%vH;
-    const brt=0.15+((i*31)%10)*0.07;
-    CX.fillStyle=`rgba(210,218,230,${brt})`;
-    CX.beginPath(); CX.arc(sx,sy,0.6+(i%3)*0.25,0,Math.PI*2); CX.fill();
+  // Stars
+  for(let i=0;i<160;i++){
+    const sx=vx+(i*137+71)%vW, sy=vy+(i*97+43)%vH;
+    const brt=0.12+((i*31)%10)*0.07;
+    const sz=0.5+(i%4)*0.22;
+    CX.fillStyle=`rgba(215,222,235,${brt})`;
+    CX.beginPath(); CX.arc(sx,sy,sz,0,Math.PI*2); CX.fill();
   }
 
-  // VESPER planet — centered slightly left, grows as ship approaches
-  // At prog=0: planet is medium-small, ship is tiny far away
-  // At prog=0.7: planet fills lower portion, ship is close and large
-  const planetX = vx + vW*0.42;
-  const planetY = vy + vH*0.58;
-  const planetR = Math.min(vW,vH)*(0.22 + prog*0.38); // grows from 22% to 60% of view
+  // ── VESPER — Saturn-style ──
+  // For launch: planet starts large (near) and shrinks; for landing: starts small and grows
+  const planetX = vx + vW*0.44;
+  const planetY = vy + vH*0.55;
+  const baseFrac = isLaunch ? (0.22 + (1-vProg)*0.38) : (0.22 + vProg*0.38);
+  const planetR = Math.min(vW,vH)*baseFrac;
 
-  // Planet sphere
+  // ── RINGS BEHIND PLANET — drawn first, lower half only visible ──
+  // Saturn's rings are tilted ~27°, we use scale(1,.28) to flatten them
+  CX.save();
+  CX.translate(planetX,planetY);
+  CX.scale(1,0.28);
+
+  // Ring shadow on planet side (makes rings look like they wrap behind)
+  // Draw back half of rings (behind planet) first
+  const ringOuter=planetR*2.05, ringInner=planetR*1.22, ringMid=planetR*1.62;
+
+  // Outer diffuse ring (B ring + A ring)
+  const rBack=CX.createRadialGradient(0,0,ringInner,0,0,ringOuter);
+  rBack.addColorStop(0,'rgba(0,0,0,0)');
+  rBack.addColorStop(.05,'rgba(195,182,148,.72)');  // inner bright B ring
+  rBack.addColorStop(.28,'rgba(210,198,158,.65)');
+  rBack.addColorStop(.42,'rgba(160,148,112,.28)');  // Cassini division — dark gap
+  rBack.addColorStop(.52,'rgba(188,175,138,.55)');  // A ring
+  rBack.addColorStop(.78,'rgba(155,142,108,.32)');
+  rBack.addColorStop(.92,'rgba(120,110,82,.12)');
+  rBack.addColorStop(1,'rgba(0,0,0,0)');
+  CX.beginPath(); CX.arc(0,0,ringOuter,Math.PI,0); // top half only (behind planet)
+  CX.fillStyle=rBack; CX.fill();
+
+  // F ring — thin bright outer ring
+  CX.strokeStyle='rgba(200,190,155,.38)'; CX.lineWidth=Math.max(1,planetR*0.018);
+  CX.beginPath(); CX.arc(0,0,planetR*2.12,Math.PI,0); CX.stroke();
+  // Cassini division dark gap line
+  CX.strokeStyle='rgba(0,0,0,.45)'; CX.lineWidth=Math.max(1.5,planetR*0.025);
+  CX.beginPath(); CX.arc(0,0,planetR*1.62,Math.PI,0); CX.stroke();
+  CX.restore();
+
+  // ── PLANET SPHERE — shared helper ensures identical look to space view ──
   CX.save();
   CX.beginPath(); CX.arc(planetX,planetY,planetR,0,Math.PI*2); CX.clip();
-  const pg=CX.createRadialGradient(planetX-planetR*.28,planetY-planetR*.28,0,planetX,planetY,planetR);
-  pg.addColorStop(0,'#706818'); pg.addColorStop(.35,'#504810'); pg.addColorStop(.75,'#3a3410'); pg.addColorStop(1,'#1e1a06');
-  CX.fillStyle=pg; CX.fillRect(planetX-planetR,planetY-planetR,planetR*2,planetR*2);
-
-  // Cloud bands — horizontal stripes
-  [{y:-.45,w:.09,c:'rgba(210,195,30,.52)'},{y:-.22,w:.13,c:'rgba(190,175,25,.42)'},
-   {y:.02,w:.16,c:'rgba(200,185,28,.48)'},{y:.26,w:.12,c:'rgba(175,165,20,.38)'},
-   {y:.48,w:.14,c:'rgba(195,180,26,.44)'}].forEach(band=>{
-    const by=planetY+band.y*planetR, bh=band.w*planetR;
-    const lg=CX.createLinearGradient(planetX,by-bh,planetX,by+bh);
-    lg.addColorStop(0,'rgba(0,0,0,0)'); lg.addColorStop(.5,band.c); lg.addColorStop(1,'rgba(0,0,0,0)');
-    CX.fillStyle=lg; CX.fillRect(planetX-planetR,by-bh,planetR*2,bh*2);
-  });
-
-  // Specular highlight
-  const hg=CX.createRadialGradient(planetX-planetR*.3,planetY-planetR*.32,0,planetX,planetY,planetR*.8);
-  hg.addColorStop(0,'rgba(220,210,100,.18)'); hg.addColorStop(1,'rgba(0,0,0,0)');
-  CX.fillStyle=hg; CX.fillRect(planetX-planetR,planetY-planetR,planetR*2,planetR*2);
+  _drawVesperSphere(planetX,planetY,planetR);
   CX.restore();
 
-  // Terminator shadow
+  // Atmosphere halo — warm golden glow
+  const atg=CX.createRadialGradient(planetX,planetY,planetR*.88,planetX,planetY,planetR*1.22);
+  atg.addColorStop(0,'rgba(200,165,60,.45)'); atg.addColorStop(.55,'rgba(175,140,40,.15)'); atg.addColorStop(1,'rgba(0,0,0,0)');
+  CX.beginPath(); CX.arc(planetX,planetY,planetR*1.22,0,Math.PI*2); CX.fillStyle=atg; CX.fill();
+
+  // Ring shadow on planet — dark band where rings cast shadow
   CX.save(); CX.beginPath(); CX.arc(planetX,planetY,planetR,0,Math.PI*2); CX.clip();
-  const sg=CX.createRadialGradient(planetX+planetR*.44,planetY+planetR*.38,planetR*.1,planetX+planetR*.28,planetY+planetR*.22,planetR*1.1);
-  sg.addColorStop(0,'rgba(0,0,0,.5)'); sg.addColorStop(.6,'rgba(0,0,0,.24)'); sg.addColorStop(1,'rgba(0,0,0,0)');
-  CX.fillStyle=sg; CX.fillRect(planetX-planetR,planetY-planetR,planetR*2,planetR*2);
+  const rShadow=CX.createLinearGradient(planetX,planetY-planetR*.05,planetX,planetY+planetR*.18);
+  rShadow.addColorStop(0,'rgba(0,0,0,0)'); rShadow.addColorStop(.35,'rgba(0,0,0,.28)'); rShadow.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=rShadow; CX.fillRect(planetX-planetR,planetY-planetR*.05,planetR*2,planetR*.23);
   CX.restore();
 
-  // Atmosphere halo
-  const atg=CX.createRadialGradient(planetX,planetY,planetR*.84,planetX,planetY,planetR*1.32);
-  atg.addColorStop(0,'rgba(180,160,40,.58)'); atg.addColorStop(.5,'rgba(155,140,25,.22)'); atg.addColorStop(1,'rgba(0,0,0,0)');
-  CX.beginPath(); CX.arc(planetX,planetY,planetR*1.32,0,Math.PI*2); CX.fillStyle=atg; CX.fill();
+  // ── RINGS IN FRONT OF PLANET — front half ──
+  CX.save();
+  CX.translate(planetX,planetY);
+  CX.scale(1,0.28);
 
-  // Rings — thin, drawn before ship so ship passes in front
-  CX.save(); CX.translate(planetX,planetY); CX.scale(1,.16);
-  const rv=CX.createRadialGradient(0,0,planetR*1.06,0,0,planetR*1.78);
-  rv.addColorStop(0,'rgba(0,0,0,0)'); rv.addColorStop(.1,'rgba(210,198,120,.5)');
-  rv.addColorStop(.5,'rgba(185,172,95,.32)'); rv.addColorStop(.85,'rgba(155,145,75,.12)'); rv.addColorStop(1,'rgba(0,0,0,0)');
-  CX.beginPath(); CX.arc(0,0,planetR*1.78,0,Math.PI*2); CX.fillStyle=rv; CX.fill();
-  CX.strokeStyle='rgba(215,205,135,.26)'; CX.lineWidth=Math.max(1,planetR*.02);
-  CX.beginPath(); CX.arc(0,0,planetR*1.24,0,Math.PI*2); CX.stroke();
+  // Clip so only front half shows (overlaps planet sphere)
+  const rFront=CX.createRadialGradient(0,0,ringInner,0,0,ringOuter);
+  rFront.addColorStop(0,'rgba(0,0,0,0)');
+  rFront.addColorStop(.05,'rgba(195,182,148,.75)');
+  rFront.addColorStop(.28,'rgba(210,198,158,.68)');
+  rFront.addColorStop(.42,'rgba(160,148,112,.22)');
+  rFront.addColorStop(.52,'rgba(188,175,138,.58)');
+  rFront.addColorStop(.78,'rgba(155,142,108,.35)');
+  rFront.addColorStop(.92,'rgba(120,110,82,.15)');
+  rFront.addColorStop(1,'rgba(0,0,0,0)');
+  CX.beginPath(); CX.arc(0,0,ringOuter,0,Math.PI); // bottom half only (in front)
+  CX.fillStyle=rFront; CX.fill();
+  // Cassini division front
+  CX.strokeStyle='rgba(0,0,0,.4)'; CX.lineWidth=Math.max(1.5,planetR*0.025);
+  CX.beginPath(); CX.arc(0,0,planetR*1.62,0,Math.PI); CX.stroke();
   CX.restore();
 
-  // ── SEARCHER SPACECRAFT ──
-  // Starts large upper-right, swoops down toward planet surface
-  // Stays visible and large throughout — this is the cinematic centrepiece
+  // ── SHIP ──
+  const shipStartX = vx + vW*0.78, shipStartY = vy + vH*0.14;
+  const shipEndX   = planetX + planetR*0.12, shipEndY = planetY + planetR*0.72;
 
-  // Ship path: upper-right corner → skims past planet face → disappears below
-  const shipStartX = vx + vW*0.88;
-  const shipStartY = vy + vH*0.12;
-  const shipEndX   = planetX + planetR*0.2;
-  const shipEndY   = planetY + planetR*0.85;
+  let shipX, shipY, dx2, dy2;
+  if(isLaunch){
+    // Launch: ship moves FROM planet center TOWARD upper-right (away)
+    const lProg = Math.min(1, vProg*1.05);
+    shipX = shipEndX + (shipStartX-shipEndX)*lProg;  // reversed
+    shipY = shipEndY + (shipStartY-shipEndY)*lProg;
+    dx2 = shipStartX - shipEndX;   // direction = away from planet
+    dy2 = shipStartY - shipEndY;
+  } else {
+    const lProg = Math.min(1, vProg*1.05);
+    shipX = shipStartX + (shipEndX-shipStartX)*lProg;
+    shipY = shipStartY + (shipEndY-shipStartY)*lProg;
+    dx2 = shipEndX - shipStartX;
+    dy2 = shipEndY - shipStartY;
+  }
 
-  const shipX = shipStartX + (shipEndX-shipStartX) * Math.min(1,prog*1.1);
-  const shipY = shipStartY + (shipEndY-shipStartY) * Math.min(1,prog*1.1);
-
-  // Scale: starts reasonably large (visible from the first frame), grows as it approaches
-  const shipScale = (1.2 + prog*3.5) * (vW/900);
-
-  // Face nose toward planet
-  const dx2 = shipEndX - shipStartX;
-  const dy2 = shipEndY - shipStartY;
+  const shipScale = (2.2 + vProg*4.5) * (vW/700);
   const shipAngle = Math.atan2(dy2, dx2) + Math.PI/2;
 
-  // Only draw ship when it's still above/near planet, not buried behind it
-  if(prog < 0.95){
-    CX.save();
-    CX.translate(shipX, shipY);
-    CX.rotate(shipAngle);
-    _drawSearcherShip(0, 0, shipScale, now, isLaunch);
+  const drawShipProg = isLaunch ? (1-vProg) : vProg;
+  if(drawShipProg < 0.95){
+    const haloG=CX.createRadialGradient(shipX,shipY,0,shipX,shipY,42*shipScale);
+    haloG.addColorStop(0,'rgba(0,0,0,.5)'); haloG.addColorStop(1,'rgba(0,0,0,0)');
+    CX.fillStyle=haloG; CX.beginPath(); CX.arc(shipX,shipY,42*shipScale,0,Math.PI*2); CX.fill();
+    CX.save(); CX.translate(shipX,shipY); CX.rotate(shipAngle);
+    _drawSearcherShip(0,0,shipScale,now,isLaunch);
     CX.restore();
   }
 
-  // Exhaust trail — long bright streak behind ship
-  if(!isLaunch && prog < 0.9){
-    // Trail direction is opposite to movement direction
-    const trailAngle = Math.atan2(dy2, dx2) + Math.PI;
-    const trailLen = (30 + prog*60) * shipScale;
-    const tx1 = shipX;
-    const ty1 = shipY;
-    const tx2 = shipX + Math.cos(trailAngle)*trailLen;
-    const ty2 = shipY + Math.sin(trailAngle)*trailLen;
-
-    const trailG = CX.createLinearGradient(tx1,ty1,tx2,ty2);
-    trailG.addColorStop(0,`rgba(120,200,255,${0.55+Math.sin(now*9)*0.15})`);
-    trailG.addColorStop(0.3,'rgba(60,140,255,.25)');
-    trailG.addColorStop(1,'rgba(0,0,0,0)');
-    CX.strokeStyle=trailG;
-    CX.lineWidth = 5*shipScale;
-    CX.lineCap='round';
-    CX.beginPath(); CX.moveTo(tx1,ty1); CX.lineTo(tx2,ty2); CX.stroke();
-
-    // Brighter inner core of trail
-    const trailG2 = CX.createLinearGradient(tx1,ty1,tx2,ty2);
-    trailG2.addColorStop(0,'rgba(200,235,255,.8)');
-    trailG2.addColorStop(0.2,'rgba(140,210,255,.3)');
-    trailG2.addColorStop(1,'rgba(0,0,0,0)');
-    CX.strokeStyle=trailG2;
-    CX.lineWidth = 1.8*shipScale;
-    CX.beginPath(); CX.moveTo(tx1,ty1); CX.lineTo(tx2,ty2*0.6+ty1*0.4); CX.stroke();
-  }
-
-  // Sulfur atmospheric glow builds up as ship gets close
-  if(prog>0.35){
-    const atmA=(prog-0.35)/0.65;
-    const ag=CX.createRadialGradient(planetX,planetY,planetR*.9,planetX,planetY,planetR*1.5);
-    ag.addColorStop(0,`rgba(190,175,25,${Math.min(0.45,atmA*.6)})`);
+  // Atmospheric glow
+  if(vProg>0.3){
+    const atmA=(vProg-0.3)/0.7;
+    const ag=CX.createRadialGradient(planetX,planetY,planetR*.9,planetX,planetY,planetR*1.4);
+    ag.addColorStop(0,`rgba(200,165,50,${Math.min(0.4,atmA*.5)})`);
     ag.addColorStop(1,'rgba(0,0,0,0)');
-    CX.beginPath(); CX.arc(planetX,planetY,planetR*1.5,0,Math.PI*2); CX.fillStyle=ag; CX.fill();
+    CX.beginPath(); CX.arc(planetX,planetY,planetR*1.4,0,Math.PI*2); CX.fillStyle=ag; CX.fill();
   }
 
-  // Re-entry heat glow on ship at high prog
-  if(prog>0.48){
-    const burnA=(prog-0.48)/0.52;
-    const bg2=CX.createRadialGradient(shipX,shipY,0,shipX,shipY,35*shipScale);
-    bg2.addColorStop(0,`rgba(255,180,40,${burnA*0.55})`);
-    bg2.addColorStop(.5,`rgba(255,120,20,${burnA*0.2})`);
-    bg2.addColorStop(1,'rgba(0,0,0,0)');
-    CX.fillStyle=bg2;
-    CX.beginPath(); CX.arc(shipX,shipY,35*shipScale,0,Math.PI*2); CX.fill();
-  }
+  // (no re-entry flame — ship stays clean)
 }
 
 
@@ -2242,23 +2539,64 @@ function _drawVesperCockpit(vx,vy,vW,vH,prog,now){
   skyG.addColorStop(0,'#0e0c02'); skyG.addColorStop(0.28,'#2a2608'); skyG.addColorStop(0.65,'#4a4210'); skyG.addColorStop(1,'#3a3410');
   CX.fillStyle=skyG; CX.fillRect(vx,vy,vW,vH);
 
-  // Thick rolling sulfur cloud layers
-  const cloudLayers=[
-    {y:.12, speed:6,  size:180, alpha:0.48, col:'195,182,28'},
-    {y:.22, speed:9,  size:140, alpha:0.38, col:'210,196,32'},
-    {y:.34, speed:14, size:110, alpha:0.32, col:'180,168,24'},
-    {y:.44, speed:7,  size:160, alpha:0.42, col:'198,184,30'},
-    {y:.54, speed:11, size:120, alpha:0.28, col:'170,158,20'},
+  // ── ATMOSPHERIC GAS LAYERS — varied, smoky, layered ──
+  // Each layer uses different speeds, sizes, vertical spread, and opacity
+  // to avoid the identical-blob look. Clouds are elongated wisps, not circles.
+
+  // Deep background haze — slow, large, diffuse
+  for(let i=0;i<8;i++){
+    const cx2=vx+((i*340+now*3.5)%vW+(i%3===0?0:i%3===1?vW*0.33:vW*0.66))%vW;
+    const cy2=vy+vH*(0.08+i*0.04)+Math.sin(now*0.18+i*0.9)*12;
+    const sr2=160+i%3*55;
+    const cg=CX.createRadialGradient(cx2,cy2,0,cx2,cy2,sr2);
+    const a=0.22+i%2*0.08;
+    cg.addColorStop(0,`rgba(185,172,22,${a})`); cg.addColorStop(.5,`rgba(170,158,18,${a*.45})`); cg.addColorStop(1,'rgba(0,0,0,0)');
+    CX.fillStyle=cg; CX.beginPath(); CX.ellipse(cx2,cy2,sr2*1.8,sr2*0.22,0,0,Math.PI*2); CX.fill();
+  }
+
+  // Mid-layer turbulent wisps — medium speed, varied heights, elongated horizontally
+  const wispDefs=[
+    {yFrac:.10,spd:7,   w:240,h:38, a:0.52, col:'200,188,28'},
+    {yFrac:.19,spd:11.5,w:180,h:28, a:0.42, col:'212,198,32'},
+    {yFrac:.29,spd:5.5, w:310,h:50, a:0.48, col:'188,175,24'},
+    {yFrac:.38,spd:9,   w:200,h:32, a:0.38, col:'205,192,30'},
+    {yFrac:.48,spd:13,  w:150,h:22, a:0.34, col:'175,162,20'},
+    {yFrac:.56,spd:6,   w:270,h:44, a:0.44, col:'192,180,26'},
   ];
-  cloudLayers.forEach(({y,speed,size,alpha:ca,col})=>{
-    for(let i=0;i<6;i++){
-      const cx2=vx+((i*280+now*speed)%vW+(i%2?0:vW/2))%vW;
-      const cy2=vy+vH*y+Math.sin(now*0.3+i)*8;
-      const cg=CX.createRadialGradient(cx2,cy2,0,cx2,cy2,size);
-      cg.addColorStop(0,`rgba(${col},${ca})`); cg.addColorStop(.6,`rgba(${col},${ca*.4})`); cg.addColorStop(1,'rgba(0,0,0,0)');
-      CX.fillStyle=cg; CX.beginPath(); CX.ellipse(cx2,cy2,size,size*.3,0,0,Math.PI*2); CX.fill();
+  wispDefs.forEach(({yFrac,spd,w,h,a,col},li)=>{
+    const count=Math.ceil(vW/(w*1.2))+2;
+    for(let i=0;i<count;i++){
+      // Offset each wisp so they don't all align
+      const phase=i*w*1.15 + li*137;
+      const cx2=vx+((phase+now*spd)%vW);
+      // Add vertical waviness — each wisp undulates at its own rate
+      const wave=Math.sin(now*0.22+i*1.3+li*0.7)*16 + Math.sin(now*0.11+i*2.1)*8;
+      const cy2=vy+vH*yFrac+wave;
+      // Vary the size of each puff
+      const wScale=0.7+Math.sin(i*1.7+li*2.3)*0.35;
+      const hScale=0.6+Math.sin(i*2.2+li*1.4)*0.4;
+      const cg=CX.createRadialGradient(cx2,cy2,0,cx2,cy2,w*wScale);
+      cg.addColorStop(0,`rgba(${col},${a})`);
+      cg.addColorStop(.45,`rgba(${col},${a*.5})`);
+      cg.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=cg;
+      CX.beginPath();
+      CX.ellipse(cx2,cy2, w*wScale, h*hScale*0.28, 0, 0, Math.PI*2);
+      CX.fill();
     }
   });
+
+  // Foreground smoke tendrils — fast, small, wispy, near horizon
+  for(let i=0;i<12;i++){
+    const cx2=vx+((i*190+now*18)%vW);
+    const cy2=vy+vH*(0.52+i%4*0.025)+Math.sin(now*0.35+i)*5;
+    const sr3=45+i%5*18;
+    const cg=CX.createRadialGradient(cx2,cy2,0,cx2,cy2,sr3);
+    cg.addColorStop(0,`rgba(178,165,20,.32)`); cg.addColorStop(.5,`rgba(165,152,16,.14)`); cg.addColorStop(1,'rgba(0,0,0,0)');
+    CX.fillStyle=cg; CX.beginPath(); CX.ellipse(cx2,cy2,sr3*2.2,sr3*0.18,0,0,Math.PI*2); CX.fill();
+  }
+
+
 
   // Ground — acidic shallow pools, murky sulphur-yellow
   const horizonY=vy+vH*(0.62-zoom*0.05);
@@ -2286,8 +2624,36 @@ function _drawVesperCockpit(vx,vy,vW,vH,prog,now){
     CX.beginPath(); CX.moveTo(vx,hy); CX.lineTo(vx+vW,hy); CX.stroke();
   }
 
-  // ── VESPER GROUND MOSS — drifting like a shallow sea floor ──
+  // ── VESPER MOSS — ground + mid-scene + foreground for underwater feel ──
   _drawVesperMoss(vx, vy, vW, vH, horizonY, zoom, now);
+
+  // ── BOTTOM FILL — extra-dense foreground plants fill the lower negative space ──
+  if(zoom>0.3){
+    const fgV=Math.min(1,(zoom-0.3)/0.3);
+    CX.globalAlpha=fgV;
+    const sw=Math.max(2,3.5*(0.4+zoom*0.6));
+    // Very tall dramatic fronds right at the bottom edge — like looking through underwater grass
+    for(let s=0;s<55;s++){
+      const bx=vx+((s*179+66)%vW);
+      const by=vy+vH-(s%6)*4;  // sits AT the bottom of the frame
+      const h=(vH*0.22+s%14*4)*(0.5+zoom*0.5);
+      const drift=Math.sin(now*0.4+s*0.95)*13;
+      const drift2=Math.sin(now*0.28+s*1.2)*6;
+      const cols=['rgba(65,58,14,.96)','rgba(48,54,11,.92)','rgba(78,68,16,.94)','rgba(42,50,10,.90)'];
+      CX.strokeStyle=cols[s%4]; CX.lineWidth=sw*(0.7+s%3*0.2); CX.lineCap='round';
+      CX.beginPath();
+      CX.moveTo(bx,by);
+      CX.bezierCurveTo(bx+drift*0.2,by-h*0.25, bx+drift*0.6+drift2,by-h*0.55, bx+drift,by-h);
+      CX.stroke();
+      if(s%3===0){
+        const tp=0.4+Math.sin(now*1.0+s*0.78)*0.28;
+        const tg=CX.createRadialGradient(bx+drift,by-h,0,bx+drift,by-h,sw*3.2);
+        tg.addColorStop(0,`rgba(168,195,32,${tp})`); tg.addColorStop(.5,`rgba(120,148,20,${tp*0.4})`); tg.addColorStop(1,'rgba(0,0,0,0)');
+        CX.fillStyle=tg; CX.beginPath(); CX.arc(bx+drift,by-h,sw*2.8,0,Math.PI*2); CX.fill();
+      }
+    }
+    CX.globalAlpha=1;
+  }
 
   // ── DIPLOCAULUS AMPHIBIANS ──
   // Mix of face-on walkers and sideways swimmers in the shallows
@@ -2297,9 +2663,11 @@ function _drawVesperCockpit(vx,vy,vW,vH,prog,now){
     {i:2, speed:6.5, offset:vW*.65, baseSize:38, depthY: 9, depthA:0.74},
     {i:3, speed:10,  offset:vW*.22, baseSize:62, depthY:24, depthA:0.95},
     {i:4, speed:7,   offset:vW*.8,  baseSize:44, depthY:17, depthA:0.88},
+    // Extra creature in lower-foreground to fill bottom space
+    {i:5, speed:3.5, offset:vW*.55, baseSize:80, depthY:35, depthA:0.90},
   ];
   creatures.sort((a,b)=>a.baseSize-b.baseSize);
-  creatures.forEach(({i,speed,offset,baseSize,depthY,depthA,mode})=>{
+  creatures.forEach(({i,speed,offset,baseSize,depthY,depthA})=>{
     const dx=vx+((now*speed+offset)%vW);
     const dscale=baseSize*(0.45+zoom*0.75);
     CX.globalAlpha=depthA*Math.min(1,zoom*2.5);
@@ -2317,92 +2685,120 @@ function _drawVesperCockpit(vx,vy,vW,vH,prog,now){
 }
 
 function _drawVesperMoss(vx,vy,vW,vH,horizonY,zoom,now){
-  const vis=Math.min(1,(zoom-0.2)/0.35);
+  const vis=Math.min(1,(zoom-0.18)/0.32);
   if(vis<=0) return;
   CX.globalAlpha=vis;
 
-  // Dark wet ground stain at horizon
-  const wetG=CX.createLinearGradient(vx,horizonY,vx,horizonY+vH*0.18);
-  wetG.addColorStop(0,'rgba(20,18,6,.72)');
-  wetG.addColorStop(.5,'rgba(14,12,4,.38)');
-  wetG.addColorStop(1,'rgba(0,0,0,0)');
-  CX.fillStyle=wetG; CX.fillRect(vx,horizonY,vW,vH*0.18);
+  // ── DARK WET GROUND ──
+  const wetG=CX.createLinearGradient(vx,horizonY,vx,horizonY+vH*0.2);
+  wetG.addColorStop(0,'rgba(18,16,5,.78)'); wetG.addColorStop(.6,'rgba(12,10,3,.35)'); wetG.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=wetG; CX.fillRect(vx,horizonY,vW,vH*0.2);
 
-  // Back layer — fine dense short fronds (far, small)
-  const sw=Math.max(1.0, 1.6*(0.35+zoom*0.65));
-  for(let s=0;s<80;s++){
-    const bx=vx+((s*113+29)%vW);
-    const by=horizonY+1+(s%5)*1.8;
-    const h=(5+s%9)*(0.3+zoom*0.7);
-    const drift=Math.sin(now*0.5+s*0.72)*4;
-    const cols=['rgba(48,44,10,.78)','rgba(36,42,8,.72)','rgba(58,52,12,.75)','rgba(30,38,7,.68)'];
-    CX.strokeStyle=cols[s%4]; CX.lineWidth=sw*0.7; CX.lineCap='round';
-    CX.beginPath();
-    CX.moveTo(bx,by);
-    CX.quadraticCurveTo(bx+drift*0.5, by-h*0.5, bx+drift, by-h);
-    CX.stroke();
+  // ── LAYER 1: FAR BACKGROUND — tiny dense carpet at horizon ──
+  const sw0=Math.max(0.6,0.9*(0.3+zoom*0.7));
+  for(let s=0;s<120;s++){
+    const bx=vx+((s*97+19)%vW);
+    const by=horizonY+0.5+(s%4)*1.4;
+    const h=(3+s%6)*(0.25+zoom*0.75);
+    const drift=Math.sin(now*0.42+s*0.65)*3;
+    const cols=['rgba(42,38,8,.72)','rgba(32,36,7,.66)','rgba(50,46,11,.7)','rgba(28,34,6,.64)'];
+    CX.strokeStyle=cols[s%4]; CX.lineWidth=sw0; CX.lineCap='round';
+    CX.beginPath(); CX.moveTo(bx,by); CX.quadraticCurveTo(bx+drift*0.5,by-h*0.5,bx+drift,by-h); CX.stroke();
   }
 
-  // Mid layer — medium swaying fronds
-  for(let s=0;s<65;s++){
-    const bx=vx+((s*157+61)%vW);
-    const by=horizonY+2+(s%6)*2.2;
-    const h=(9+s%14)*(0.35+zoom*0.65);
-    const drift=Math.sin(now*0.55+s*0.82)*6;
-    const drift2=Math.sin(now*0.38+s*1.05)*3;
-    const cols=['rgba(55,50,12,.88)','rgba(40,46,9,.82)','rgba(65,58,14,.85)','rgba(35,42,8,.78)','rgba(72,64,16,.8)'];
-    CX.strokeStyle=cols[s%5]; CX.lineWidth=sw; CX.lineCap='round';
+  // ── LAYER 2: MID GROUND — medium fronds at horizon ──
+  const sw1=Math.max(0.9,1.3*(0.32+zoom*0.68));
+  for(let s=0;s<90;s++){
+    const bx=vx+((s*131+47)%vW);
+    const by=horizonY+1.5+(s%5)*2;
+    const h=(7+s%11)*(0.3+zoom*0.7);
+    const drift=Math.sin(now*0.5+s*0.78)*6;
+    const drift2=Math.sin(now*0.35+s*1.02)*3;
+    const cols=['rgba(52,48,11,.86)','rgba(38,44,9,.8)','rgba(62,55,13,.84)','rgba(34,40,8,.78)','rgba(68,60,15,.82)'];
+    CX.strokeStyle=cols[s%5]; CX.lineWidth=sw1; CX.lineCap='round';
     CX.beginPath();
     CX.moveTo(bx,by);
     CX.bezierCurveTo(bx+drift*0.3,by-h*0.3, bx+drift*0.7+drift2,by-h*0.65, bx+drift,by-h);
     CX.stroke();
-    // Bioluminescent tip
-    const tp=0.28+Math.sin(now*1.3+s*0.68)*0.2;
-    CX.fillStyle=`rgba(140,160,25,${tp})`;
-    CX.beginPath(); CX.arc(bx+drift, by-h, Math.max(0.8,sw*0.9), 0, Math.PI*2); CX.fill();
+    const tp=0.25+Math.sin(now*1.25+s*0.7)*0.18;
+    CX.fillStyle=`rgba(135,155,22,${tp})`;
+    CX.beginPath(); CX.arc(bx+drift,by-h,Math.max(0.7,sw1*0.85),0,Math.PI*2); CX.fill();
   }
 
-  // Front layer — tall dramatic fronds close to viewer
-  for(let s=0;s<40;s++){
-    const bx=vx+((s*199+85)%vW);
-    const by=horizonY+3+(s%4)*2.8;
-    const h=(16+s%20)*(0.4+zoom*0.6);
-    const drift=Math.sin(now*0.48+s*0.91)*10;
-    const drift2=Math.sin(now*0.32+s*1.18)*5;
-    const cols=['rgba(62,56,14,.92)','rgba(44,50,10,.88)','rgba(75,66,18,.9)','rgba(38,46,9,.85)'];
-    CX.strokeStyle=cols[s%4]; CX.lineWidth=sw*1.4; CX.lineCap='round';
-    CX.beginPath();
-    CX.moveTo(bx,by);
-    CX.bezierCurveTo(bx+drift*0.25,by-h*0.28, bx+drift*0.65+drift2,by-h*0.62, bx+drift,by-h);
-    CX.stroke();
-    // Larger glowing tip
-    const tp=0.35+Math.sin(now*1.1+s*0.75)*0.25;
-    const tipG=CX.createRadialGradient(bx+drift,by-h,0,bx+drift,by-h,sw*2.5);
-    tipG.addColorStop(0,`rgba(165,188,32,${tp*0.95})`);
-    tipG.addColorStop(.5,`rgba(120,145,18,${tp*0.45})`);
-    tipG.addColorStop(1,'rgba(0,0,0,0)');
-    CX.fillStyle=tipG; CX.beginPath(); CX.arc(bx+drift,by-h,sw*2.2,0,Math.PI*2); CX.fill();
+  // ── LAYER 3: MID-SCENE — tall fronds rising from mid-foreground ──
+  // These appear between the creatures, giving underwater depth
+  if(zoom>0.28){
+    const midVis=Math.min(1,(zoom-0.28)/0.35);
+    const sw2=Math.max(1.2,1.8*(0.35+zoom*0.65));
+    CX.globalAlpha=vis*midVis;
+    for(let s=0;s<55;s++){
+      const bx=vx+((s*173+82)%vW);
+      const by=horizonY+6+(s%7)*3.5;
+      const h=(18+s%16)*(0.38+zoom*0.62);
+      const drift=Math.sin(now*0.44+s*0.86)*9;
+      const drift2=Math.sin(now*0.3+s*1.14)*5;
+      const cols=['rgba(60,54,13,.9)','rgba(44,50,10,.85)','rgba(72,64,16,.88)','rgba(38,46,9,.83)'];
+      CX.strokeStyle=cols[s%4]; CX.lineWidth=sw2; CX.lineCap='round';
+      CX.beginPath();
+      CX.moveTo(bx,by);
+      CX.bezierCurveTo(bx+drift*0.25,by-h*0.28, bx+drift*0.65+drift2,by-h*0.6, bx+drift,by-h);
+      CX.stroke();
+      const tp=0.32+Math.sin(now*1.05+s*0.72)*0.22;
+      const tg=CX.createRadialGradient(bx+drift,by-h,0,bx+drift,by-h,sw2*2.8);
+      tg.addColorStop(0,`rgba(160,185,30,${tp*0.92})`); tg.addColorStop(.5,`rgba(115,138,18,${tp*0.42})`); tg.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=tg; CX.beginPath(); CX.arc(bx+drift,by-h,sw2*2.4,0,Math.PI*2); CX.fill();
+    }
+    CX.globalAlpha=vis;
   }
 
-  // Blob moss clumps between strands
-  for(let b=0;b<26;b++){
+  // ── LAYER 4: FOREGROUND EDGE — very tall fronds at bottom of frame ──
+  // These frame the bottom like seagrass in front of a camera — true underwater feel
+  if(zoom>0.42){
+    const fgVis=Math.min(1,(zoom-0.42)/0.3);
+    const sw3=Math.max(1.8,2.8*(0.4+zoom*0.6));
+    CX.globalAlpha=vis*fgVis*0.9;
+    for(let s=0;s<32;s++){
+      const bx=vx+((s*211+108)%vW);
+      const by=horizonY+vH*0.18+(s%5)*3;
+      const h=(32+s%24)*(0.45+zoom*0.55);
+      const drift=Math.sin(now*0.38+s*0.92)*14;
+      const drift2=Math.sin(now*0.26+s*1.22)*7;
+      const cols=['rgba(68,60,15,.94)','rgba(48,55,11,.9)','rgba(80,72,18,.92)','rgba(42,50,10,.88)'];
+      CX.strokeStyle=cols[s%4]; CX.lineWidth=sw3; CX.lineCap='round';
+      CX.beginPath();
+      CX.moveTo(bx,by);
+      CX.bezierCurveTo(bx+drift*0.22,by-h*0.25, bx+drift*0.62+drift2,by-h*0.58, bx+drift,by-h);
+      CX.stroke();
+      // Large luminous tip cluster
+      const tp=0.38+Math.sin(now*0.95+s*0.78)*0.28;
+      const tg2=CX.createRadialGradient(bx+drift,by-h,0,bx+drift,by-h,sw3*3.5);
+      tg2.addColorStop(0,`rgba(172,198,35,${tp})`); tg2.addColorStop(.45,`rgba(125,150,22,${tp*0.45})`); tg2.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=tg2; CX.beginPath(); CX.arc(bx+drift,by-h,sw3*3,0,Math.PI*2); CX.fill();
+    }
+    CX.globalAlpha=vis;
+  }
+
+  // ── MOSS BLOB PATCHES — throughout ground ──
+  for(let b=0;b<32;b++){
     const bx=vx+((b*218+94)%vW);
-    const by=horizonY+1+(b%5)*2.4;
-    const br=(3.5+b%7)*(0.4+zoom*0.6);
+    const by=horizonY+1+(b%6)*2.8;
+    const br=(3+b%7)*(0.38+zoom*0.62);
     const bg=CX.createRadialGradient(bx,by,0,bx,by,br);
-    bg.addColorStop(0,`rgba(78,70,15,.62)`); bg.addColorStop(.6,`rgba(48,44,10,.4)`); bg.addColorStop(1,'rgba(0,0,0,0)');
+    bg.addColorStop(0,'rgba(76,68,14,.62)'); bg.addColorStop(.6,'rgba(46,42,10,.4)'); bg.addColorStop(1,'rgba(0,0,0,0)');
     CX.fillStyle=bg; CX.beginPath(); CX.arc(bx,by,br,0,Math.PI*2); CX.fill();
   }
 
-  // Floating spores — tiny drifting motes above the moss
-  if(zoom>0.38){
-    const spVis=Math.min(1,(zoom-0.38)/0.3)*0.65;
-    CX.globalAlpha=spVis*vis;
-    for(let sp=0;sp<32;sp++){
-      const sx=vx+((sp*148+now*10+sp*0.4)%vW);
-      const sy=horizonY-sp%10*3.2-Math.sin(now*0.45+sp)*5;
-      const sa=0.18+Math.sin(now*1.05+sp*0.85)*0.16;
-      CX.fillStyle=`rgba(155,175,28,${sa})`;
+  // ── FLOATING SPORES — drifting upward through the scene ──
+  if(zoom>0.32){
+    const spV=Math.min(1,(zoom-0.32)/0.28)*0.7;
+    CX.globalAlpha=spV*vis;
+    for(let sp=0;sp<45;sp++){
+      const sx=vx+((sp*142+now*8+sp*0.38)%vW);
+      // Spores drift at different heights — some near ground, some mid-scene
+      const baseH=sp%3===0?vH*0.12:sp%3===1?vH*0.06:0;
+      const sy=horizonY-baseH-sp%11*3.5-Math.sin(now*0.42+sp)*5;
+      const sa=0.16+Math.sin(now*1.02+sp*0.82)*0.14;
+      CX.fillStyle=`rgba(152,172,26,${sa})`;
       CX.beginPath(); CX.arc(sx,sy,1.1,0,Math.PI*2); CX.fill();
     }
     CX.globalAlpha=vis;
@@ -2410,7 +2806,6 @@ function _drawVesperMoss(vx,vy,vW,vH,horizonY,zoom,now){
 
   CX.globalAlpha=1;
 }
-
 function _drawDiplocaulus(cx,cy,sc,animT){
   // Diplocaulus: Permian era amphibian (~280 million years ago)
   // DEFINING feature: enormous flat boomerang/hammerhead skull wider than it is long
@@ -3313,7 +3708,6 @@ function updateHUD(){
   if(spd>MAX_SPD*.88) mkAl('⚠ MAX VELOCITY','al-w');
   if(ship.thrOn) mkAl('▶ THRUST ACTIVE','al-g');
   if(gs==='LAUNCHING') mkAl('▲ ASCENT CORRIDOR ACTIVE','al-g');
-  if(near&&gs==='FLIGHT') mkAl('◈ APPROACH: '+near.name,'al-i');
 
   // Target pip
   const rot=-ship.angle-Math.PI/2;
@@ -3417,7 +3811,15 @@ function drawScanner(){
     const col=(rc[b.srf]||'rgba(212,150,12,')+blipA+')';
     if(sweep>0.1){const bg=SCN2.createRadialGradient(sx,sy,0,sx,sy,(isNear?4.5:3)*4);bg.addColorStop(0,(rc[b.srf]||'rgba(212,150,12,')+sweep*0.4+')');bg.addColorStop(1,'rgba(0,0,0,0)');SCN2.fillStyle=bg;SCN2.beginPath();SCN2.arc(sx,sy,(isNear?4.5:3)*4,0,Math.PI*2);SCN2.fill();}
     SCN2.fillStyle=col;SCN2.beginPath();SCN2.arc(sx,sy,b.isStation?2:isNear?4.5:3,0,Math.PI*2);SCN2.fill();
-    if(isNear){SCN2.fillStyle='rgba(212,150,12,.8)';SCN2.font='7px "Share Tech Mono",monospace';SCN2.textAlign='left';SCN2.textBaseline='middle';SCN2.fillText(b.name,sx+6,sy);}
+    // Show name for all bodies — larger text for targeted/near
+    const nameAlpha=isNear?0.85:Math.max(0.25, blipA*0.7);
+    const nameSz=isNear?'7.5px':'6px';
+    SCN2.fillStyle=`rgba(212,150,12,${nameAlpha})`;
+    SCN2.font=`${nameSz} "Share Tech Mono",monospace`;
+    SCN2.textAlign='left';SCN2.textBaseline='middle';
+    // Truncate long names to fit
+    const shortName=b.name.length>8?b.name.slice(0,7)+'…':b.name;
+    SCN2.fillText(shortName,sx+5,sy);
   });
   SCN2.fillStyle='rgba(240,200,64,.8)';SCN2.beginPath();SCN2.arc(cx,cy,2,0,Math.PI*2);SCN2.fill();
   const statusEl2=document.getElementById('scan-status');
@@ -3624,16 +4026,19 @@ function _drawListerSurface(vx,vy,vW,vH,now){
   const mechSc=Math.min(vW,vH)/320;
   listerUnitPos=[];
 
-  // Gas tanks
-  [{spd:12,off:vW*.08,face:true},{spd:18,off:vW*.42,face:false},{spd:9,off:vW*.68,face:true},{spd:15,off:vW*.85,face:false}].forEach(({spd,off,face},i)=>{
+  // Gas tanks — each has unique leg speed and phase so they don't march in sync
+  [{spd:12,off:vW*.08,face:true, ls:2.1,lp:0.0},
+   {spd:18,off:vW*.42,face:false,ls:3.4,lp:1.7},
+   {spd:9, off:vW*.68,face:true, ls:1.8,lp:0.9},
+   {spd:15,off:vW*.85,face:false,ls:2.7,lp:2.4}].forEach(({spd,off,face,ls,lp},i)=>{
     const tx=vx+((off+now*spd)%vW);
     const _s=100*mechSc/100; listerUnitPos.push({x:tx,y:hY,type:'tank',s:_s,facingRight:face});
-    _drawListerTRex(tx,hY,100*mechSc,90*mechSc,now*2.5+i,face,gasT,now);
+    _drawListerTRex(tx,hY,100*mechSc,90*mechSc,now*ls+lp,face,gasT,now);
   });
   // Ground bots
-  [[.15,18,true],[.38,22,false],[.62,16,true],[.88,20,false]].forEach(([px2,spd,face],i)=>{
+  [[.15,18,true,1.8,0.0],[.38,22,false,2.3,1.1],[.62,16,true,1.5,2.2],[.88,20,false,2.7,0.7]].forEach(([px2,spd,face,lspd,lph],i)=>{
     const bx=vx+((px2*vW+now*spd)%vW);
-    _drawMechBot(bx,hY,mechSc*1.0,now+i*1.5,face);
+    _drawMechBot(bx,hY,mechSc*1.0,now*lspd/2.2+lph,face);
   });
   // Drones
   [[35,.15,44],[50,.25,36],[27,.09,52],[62,.19,30]].forEach(([spd,yF,sz],i)=>{
@@ -3754,8 +4159,8 @@ function _drawListerTRex(cx2,cy2,width,height,legAngle,facingRight,gasT,now){
   CX.beginPath();CX.moveTo(-80*s,-3*s+lm);CX.lineTo(-100*s,50*s+lm*.5);CX.lineTo(-95*s,55*s+lm*.5);CX.lineTo(-75*s,2*s+lm);CX.closePath();CX.fill();CX.stroke();
   CX.beginPath();CX.moveTo(50*s,-25*s);CX.lineTo(90*s,-5*s+lm2);CX.lineTo(95*s,lm2);CX.lineTo(55*s,-20*s);CX.closePath();CX.fill();CX.stroke();
   CX.beginPath();CX.moveTo(90*s,-3*s+lm2);CX.lineTo(110*s,50*s+lm2*.5);CX.lineTo(105*s,55*s+lm2*.5);CX.lineTo(85*s,2*s+lm2);CX.closePath();CX.fill();CX.stroke();
-  // Turret
-  CX.save();CX.translate(60*s,-55*s);const aim=Math.sin(now*0.7)*0.4;CX.rotate(aim);
+  // Turret — uses legAngle for unique phase per tank
+  CX.save();CX.translate(60*s,-55*s);const aim=Math.sin(legAngle*0.8+legAngle*0.13)*0.35;CX.rotate(aim);
   CX.fillStyle=mDark;CX.beginPath();CX.ellipse(0,0,20*s,12*s,0,0,Math.PI*2);CX.fill();
   CX.fillStyle=mMid;CX.fillRect(10*s,-7*s,70*s,14*s);CX.fillStyle=mDark;CX.fillRect(75*s,-6*s,12*s,12*s);
   CX.fillStyle=mLight;CX.fillRect(30*s,-7*s,3*s,14*s);CX.fillRect(55*s,-7*s,3*s,14*s);CX.restore();
@@ -3788,27 +4193,67 @@ function _drawListerDrone(cx2,cy2,w,h,now){
 
 function _drawMechBot(cx2,cy2,sc,now,facingRight){
   CX.save();CX.translate(cx2,cy2);if(!facingRight)CX.scale(-1,1);
-  const s=sc,la=now*2.2,lm=Math.sin(la)*8*s,lm2=Math.sin(la+Math.PI)*8*s;
-  const st1='#404040',st2='#2a2a2a',st3='#0f0f0f';
-  CX.fillStyle='rgba(0,0,0,.3)';CX.beginPath();CX.ellipse(0,38*s,24*s,7*s,0,0,Math.PI*2);CX.fill();
-  for(const side of[-1,1]){
-    const lv=side>0?lm2:lm;
-    CX.strokeStyle=st2;CX.lineWidth=4*s;CX.lineCap='round';
-    CX.beginPath();CX.moveTo(side*20*s,-6*s);CX.lineTo(side*30*s+side*lv,8*s);CX.stroke();
-    CX.strokeStyle=st3;CX.beginPath();CX.moveTo(side*30*s+side*lv,8*s);CX.lineTo(side*24*s+side*lv*.7,34*s);CX.stroke();
-    CX.fillStyle=st1;CX.beginPath();CX.arc(side*30*s+side*lv,8*s,2.8*s,0,Math.PI*2);CX.fill();
-    CX.strokeStyle=st3;CX.lineWidth=2*s;
-    CX.beginPath();CX.moveTo(side*24*s+side*lv*.7,34*s);CX.lineTo(side*24*s+side*lv*.7-side*5*s,34*s+6*s);CX.stroke();
-    CX.beginPath();CX.moveTo(side*24*s+side*lv*.7,34*s);CX.lineTo(side*24*s+side*lv*.7,34*s+8*s);CX.stroke();
-  }
-  const bW=36*s,bH=20*s,bY=-14*s;
-  const bg=CX.createLinearGradient(-bW/2,bY,bW/2,bY+bH);bg.addColorStop(0,st1);bg.addColorStop(.5,st2);bg.addColorStop(1,st3);
-  CX.fillStyle=bg;CX.beginPath();CX.moveTo(-bW/2,bY);CX.lineTo(bW/2,bY);CX.lineTo(bW/2-4*s,bY+bH);CX.lineTo(-bW/2+4*s,bY+bH);CX.closePath();CX.fill();
-  const dW=bW*.40,dH=14*s,dY=bY-dH+3*s;
-  CX.fillStyle=st2;CX.beginPath();CX.ellipse(0,dY+dH/2,dW/2,dH/2,0,0,Math.PI*2);CX.fill();
-  CX.save();CX.shadowColor='#ff3333';CX.shadowBlur=9*s;CX.fillStyle='#ff4444';CX.globalAlpha=.8+Math.sin(now*3.1)*.2;
-  for(const side of[-1,1]){CX.beginPath();CX.arc(side*dW*.23,dY+dH*.52,2.5*s,0,Math.PI*2);CX.fill();}
-  CX.restore();CX.restore();
+  const s=sc;
+  const st1='#383838',st2='#242424',st3='#111';
+
+  // Body dimensions — draw first so legs attach to visible sides
+  const bW=32*s, bH=20*s, bY=-14*s;
+  // Hip attachment points on body sides: front and back, left and right
+  // Body spans from -bW/2 to +bW/2 horizontally, bY to bY+bH vertically
+  const hipFY=bY+bH*0.35;  // front leg row on body
+  const hipBY=bY+bH*0.75;  // back leg row on body
+
+  // 4 legs with hips AT the body edge
+  const legs=[
+    {hipX:-bW/2, hipY:hipFY, phase:now,               sx:-1}, // left-front
+    {hipX: bW/2, hipY:hipFY, phase:now+Math.PI,        sx: 1}, // right-front
+    {hipX:-bW/2, hipY:hipBY, phase:now+1.2,            sx:-1}, // left-back
+    {hipX: bW/2, hipY:hipBY, phase:now+Math.PI+0.85,   sx: 1}, // right-back
+  ];
+
+  // Shadow
+  CX.fillStyle='rgba(0,0,0,.28)';CX.beginPath();CX.ellipse(0,38*s,26*s,6*s,0,0,Math.PI*2);CX.fill();
+
+  // Draw legs BEFORE body so body covers hip area naturally
+  CX.lineCap='round';
+  legs.forEach(({hipX,hipY,phase,sx})=>{
+    const swing=Math.sin(phase)*10*s;
+    const kneeX=hipX+sx*12*s+swing*0.5;
+    const kneeY=hipY+16*s;
+    const footX=hipX+sx*8*s+swing;
+    const footY=bY+bH+20*s; // all feet at same ground level
+
+    // Upper leg
+    CX.strokeStyle=st2;CX.lineWidth=3.8*s;
+    CX.beginPath();CX.moveTo(hipX,hipY);CX.lineTo(kneeX,kneeY);CX.stroke();
+    // Knee dot
+    CX.fillStyle='#303030';CX.beginPath();CX.arc(kneeX,kneeY,2.8*s,0,Math.PI*2);CX.fill();
+    // Lower leg
+    CX.strokeStyle=st3;CX.lineWidth=2.5*s;
+    CX.beginPath();CX.moveTo(kneeX,kneeY);CX.lineTo(footX,footY);CX.stroke();
+    // Foot — two prongs
+    CX.lineWidth=1.6*s;
+    CX.beginPath();CX.moveTo(footX,footY);CX.lineTo(footX-sx*4*s,footY+5*s);CX.stroke();
+    CX.beginPath();CX.moveTo(footX,footY);CX.lineTo(footX+sx*1*s,footY+6*s);CX.stroke();
+  });
+
+  // Body drawn ON TOP of leg hips
+  const bg=CX.createLinearGradient(-bW/2,bY,bW/2,bY+bH);
+  bg.addColorStop(0,st1);bg.addColorStop(.5,st2);bg.addColorStop(1,st3);
+  CX.fillStyle=bg;
+  CX.beginPath();CX.moveTo(-bW/2,bY);CX.lineTo(bW/2,bY);
+  CX.lineTo(bW/2-3*s,bY+bH);CX.lineTo(-bW/2+3*s,bY+bH);CX.closePath();CX.fill();
+
+  // Head dome
+  const dW=bW*.44,dH=13*s,dY=bY-dH+3*s;
+  CX.fillStyle=st2;CX.beginPath();CX.ellipse(0,dY+dH*.5,dW/2,dH/2,0,0,Math.PI*2);CX.fill();
+
+  // Red eyes
+  CX.save();CX.shadowColor='#ff3333';CX.shadowBlur=8*s;
+  CX.fillStyle='#ff4444';CX.globalAlpha=.85+Math.sin(now*3.1)*.15;
+  for(const ex of[-1,1]){CX.beginPath();CX.arc(ex*dW*.22,dY+dH*.48,2.4*s,0,Math.PI*2);CX.fill();}
+  CX.restore();
+  CX.restore();
 }
 
 function playShieldUp(){
@@ -3831,11 +4276,11 @@ function scheduleListerBriefing_(){
   if(gs!=='LANDED'||!seqBody||seqBody.srf!=='lister') return;
   listerPhase=0;listerShieldOn=false;listerMechsTransported=0;listerLasers=[];
   const say=(txt,delay)=>setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')speak(txt,true);},delay);
-  say('Surface contact. Lister-Alpha. Barren metallic body.',1000);
-  say('Scanning. Energy signatures detected. Significant.',7000);
-  say('Artificial intelligence confirmed.',13000);
-  say('Classification: Supreme Intelligence. Threat level: Extreme Hostile.',19000);
-  say('Raising defensive shields now.',25000);
+  say('Surface contact. Lister-Alpha.',2000);
+  say('Scanning. Energy signatures detected.',9000);
+  say('Artificial intelligence confirmed.',15000);
+  say('Threat level: Extreme Hostile.',21000);
+  say('Raising defensive shields.',28000);
   setTimeout(()=>{
     if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister'){
       listerShieldOn=true;
@@ -3860,7 +4305,8 @@ function listerStartFiring(){
     if(gs!=='LANDED'||!seqBody||seqBody.srf!=='lister'){clearInterval(iv);return;}
     const vW=CV.width-PW*2, vH=CV.height-BH;
     const targetX=PW+vW*0.5, targetY=vH*0.52; // aim at ship center
-    const fromDrone=shots%2===0;
+    // Alternate: 2 drones then 1 tank for visual variety
+    const fromDrone=shots%3!==2;
     const pool=listerUnitPos.filter(u=>u.type===(fromDrone?'drone':'tank'));
     if(pool.length===0){shots++;return;}
     const u=pool[shots%pool.length];
@@ -3876,7 +4322,7 @@ function listerStartFiring(){
     shots++;
     if(!listerShieldOn) ship.hull=Math.max(0,ship.hull-3);
     if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Mech fighters available for transport.',false);}
-  },2000);
+  },1500);
 }
 
 function scheduleListerBriefing_(){
@@ -3901,23 +4347,4 @@ function scheduleListerBriefing_(){
   setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')listerStartFiring();},39000);
 }
 
-function listerStartFiring(){
-  if(listerPhase>=2)return;listerPhase=2;
-  speak('Hostile units opening fire.',true);
-  document.getElementById('arrive-hint').textContent='HULL UNDER ATTACK — LAUNCH NOW';
-  let shots=0;
-  const iv=setInterval(()=>{
-    if(gs!=='LANDED'||!seqBody||seqBody.srf!=='lister'){clearInterval(iv);return;}
-    const vW=CV.width-PW*2,vH=CV.height-BH;
-    const fromDrone=shots%2===0;
-    const pool=listerUnitPos.filter(u=>u.type===(fromDrone?'drone':'tank'));
-    let x1,y1;
-    if(pool.length>0){const u=pool[shots%pool.length];x1=u.x;y1=fromDrone?u.y:u.y-30;}
-    else{x1=PW+vW*(.15+.7*Math.random());y1=vH*(.2+.3*Math.random());}
-    listerLasers.push({x1,y1,x2:PW+vW*.5+((Math.random()-.5)*80),y2:vH*.52,born:Date.now(),life:700});
-    shots++;
-    if(!listerShieldOn)ship.hull=Math.max(0,ship.hull-3);
-    if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Mech fighters available for transport.',false);}
-  },2000);
-}
 </script>
