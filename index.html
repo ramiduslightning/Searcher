@@ -986,6 +986,7 @@ const BODIES=[
 ];
 let tgtIdx=0;
 let autopilotOn=false;
+let _camOffY=0; // camera look-ahead — persists until player moves, then smoothly returns to zero
 let _helmAnnouncedOnce=false;
 let _targetInitDist=0;         // distance to target when it was selected
 let _targetApproachAnnounced=false; // true once the 75%-there approach is announced
@@ -1021,38 +1022,46 @@ function toggleAutopilot(){
 }
 
 function updateAutopilot(){
+  // Decay camera offset only when player is actively flying — not just because autopilot is off
+  if(_camOffY!==0 && !autopilotOn){
+    const playerMoving=ship.thrOn||Math.hypot(ship.vx,ship.vy)>1.0||K['arrowleft']||K['arrowright']||K['arrowup']||K['arrowdown'];
+    if(playerMoving){ _camOffY*=0.93; if(Math.abs(_camOffY)<0.5) _camOffY=0; }
+  }
   if(!autopilotOn||gs!=='FLIGHT') return;
   const t=target();
-  const stopDist=t.isStation?60:120;
-  const apX=t.x, apY=t.y+stopDist;
-  const dx=apX-ship.x, dy=apY-ship.y;
-  const distToAP=Math.hypot(dx,dy);
-  const angleToAP=Math.atan2(dy,dx);
+  // stopDist keeps planet at the right screen position — original ~120 range preserved
+  const stopDist=t.isStation ? Math.max(65,t.r*3.5) : Math.max(120, t.r*1.1);
+  const dx=t.x-ship.x, dy=t.y-ship.y;
+  const distToPlanet=Math.hypot(dx,dy);
+  const angleToPlanet=Math.atan2(dy,dx);
   const spd=Math.hypot(ship.vx,ship.vy);
-  if(distToAP<=12){
-    ship.vx*=0.7; ship.vy*=0.7; ship.thrOn=false;
+
+  if(distToPlanet<=stopDist){
+    ship.vx*=0.75; ship.vy*=0.75; ship.thrOn=false;
     if(Math.hypot(ship.vx,ship.vy)<0.05){
       ship.vx=0; ship.vy=0; autopilotOn=false;
       document.getElementById('btn-autopilot').classList.remove('ap-on');
       document.getElementById('btn-autopilot').textContent='⊙ AUTOPILOT';
-      // Face planet after stop — helm rotates smoothly from here
-      steerTarget=Math.atan2(t.y-ship.y,t.x-ship.x);
-      speak(ttsName(t.name)+' visible. You have control.',true);
+      steerTarget=angleToPlanet;
+      // Offset world so planet sits at 40% from viewport top on any screen size.
+      // Derived: planet Y = cy + _camOffY - stopDist = cy*0.8  →  _camOffY = stopDist - cy*0.2
+      _camOffY=stopDist - vCY()*0.2;
+      speak(ttsName(t.name)+' visible.',true);
       _lastAutopilotTarget=t.name; lastVoiceApproach=t.name; _targetApproachAnnounced=true;
     }
     return;
   }
-  // Always steer toward approach point — no late-angle flip
-  steerTarget=angleToAP;
-  const da=normA(angleToAP-ship.angle);
+
+  steerTarget=angleToPlanet;
+  const da=normA(angleToPlanet-ship.angle);
   const aligned=Math.abs(da)<0.14;
-  const brakeDist=(spd*spd)/(2*0.12)*1.8+12;
-  if(distToAP<=brakeDist){
-    const vToward=ship.vx*Math.cos(angleToAP)+ship.vy*Math.sin(angleToAP);
-    if(vToward>0.2){ const dec=Math.min(0.18,vToward*0.5); ship.vx-=Math.cos(angleToAP)*dec; ship.vy-=Math.sin(angleToAP)*dec; ship.fuel=Math.max(0,ship.fuel-FUEL_RATE*0.35); }
+  const brakeDist=(spd*spd)/(2*0.12)*1.8+stopDist;
+  if(distToPlanet<=brakeDist){
+    const vToward=ship.vx*Math.cos(angleToPlanet)+ship.vy*Math.sin(angleToPlanet);
+    if(vToward>0.2){ const dec=Math.min(0.18,vToward*0.5); ship.vx-=Math.cos(angleToPlanet)*dec; ship.vy-=Math.sin(angleToPlanet)*dec; ship.fuel=Math.max(0,ship.fuel-FUEL_RATE*0.35); }
     ship.thrOn=false;
   } else if(aligned&&ship.fuel>0){
-    const maxSpd=distToAP>600?9:distToAP>150?5:2;
+    const maxSpd=distToPlanet>600?9:distToPlanet>150?5:2;
     if(spd<maxSpd){ ship.vx+=Math.cos(ship.angle)*ship.thrPct*0.18; ship.vy+=Math.sin(ship.angle)*ship.thrPct*0.18; ship.fuel=Math.max(0,ship.fuel-FUEL_RATE*ship.thrPct); ship.thrOn=true; }
     else ship.thrOn=false;
   } else { ship.thrOn=false; }
@@ -1492,7 +1501,7 @@ function drawScene(){
   const skipWorld = (gs==='LANDING'||gs==='LAUNCHING') && seqBody && !seqBody.isStation && seqPhase>=1;
 
   if(!skipWorld){
-    CX.save(); CX.translate(cx,cy); CX.rotate(rot);
+    CX.save(); CX.translate(cx,cy+_camOffY); CX.rotate(rot);
 
     // Particles (orange/gold when thrusting)
     for(const p of PTCLS){
