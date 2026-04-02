@@ -850,7 +850,7 @@ function updateVoice(){
 
   if(near&&gs==='FLIGHT'&&!autopilotOn&&near.name!==lastVoiceApproach&&near.name!==_lastAutopilotTarget){
     const act=near.isStation?'Docking available. Select dock in actions.':'Landing available. Select land in actions.';
-    speak(`Approaching ${ttsName(near.name)}. ${act}`);
+    speak(`${ttsName(near.name)} visible. ${act}`);
     lastVoiceApproach=near.name; _targetApproachAnnounced=true; return;
   }
   if(!near){ lastVoiceApproach=''; _lastAutopilotTarget=''; }
@@ -986,7 +986,7 @@ const BODIES=[
 ];
 let tgtIdx=0;
 let autopilotOn=false;
-let _camOffY=0; // camera look-ahead — persists until player moves, then smoothly returns to zero
+let _camOffY=0; // camera look-ahead — holds until player moves, then smoothly returns to zero
 let _helmAnnouncedOnce=false;
 let _targetInitDist=0;         // distance to target when it was selected
 let _targetApproachAnnounced=false; // true once the 75%-there approach is announced
@@ -1022,15 +1022,14 @@ function toggleAutopilot(){
 }
 
 function updateAutopilot(){
-  // Decay camera offset only when player is actively flying — not just because autopilot is off
+  // Decay camera offset only when player is actively flying
   if(_camOffY!==0 && !autopilotOn){
     const playerMoving=ship.thrOn||Math.hypot(ship.vx,ship.vy)>1.0||K['arrowleft']||K['arrowright']||K['arrowup']||K['arrowdown'];
     if(playerMoving){ _camOffY*=0.93; if(Math.abs(_camOffY)<0.5) _camOffY=0; }
   }
   if(!autopilotOn||gs!=='FLIGHT') return;
   const t=target();
-  // stopDist keeps planet at the right screen position — original ~120 range preserved
-  const stopDist=t.isStation ? Math.max(65,t.r*3.5) : Math.max(120, t.r*1.1);
+  const stopDist=t.isStation ? Math.max(65,t.r*3.5) : Math.max(120,t.r*1.1);
   const dx=t.x-ship.x, dy=t.y-ship.y;
   const distToPlanet=Math.hypot(dx,dy);
   const angleToPlanet=Math.atan2(dy,dx);
@@ -1043,8 +1042,7 @@ function updateAutopilot(){
       document.getElementById('btn-autopilot').classList.remove('ap-on');
       document.getElementById('btn-autopilot').textContent='⊙ AUTOPILOT';
       steerTarget=angleToPlanet;
-      // Offset world so planet sits at 40% from viewport top on any screen size.
-      // Derived: planet Y = cy + _camOffY - stopDist = cy*0.8  →  _camOffY = stopDist - cy*0.2
+      // Shift world so planet sits at ~40% from viewport top on any screen size
       _camOffY=stopDist - vCY()*0.2;
       speak(ttsName(t.name)+' visible.',true);
       _lastAutopilotTarget=t.name; lastVoiceApproach=t.name; _targetApproachAnnounced=true;
@@ -4035,7 +4033,7 @@ function drawScanner(){
   const statusEl2=document.getElementById('scan-status');
   if(statusEl2){
     const lnear=gs==='LANDED'&&seqBody;
-    if(lnear&&seqBody.srf==='lister'){statusEl2.textContent='HOSTILE SURFACE';statusEl2.style.color='rgba(255,60,60,.8)';}
+    if(lnear&&seqBody.srf==='lister'&&listerPhase>=1){statusEl2.textContent='HOSTILE SURFACE';statusEl2.style.color='rgba(255,60,60,.8)';}
     else if(lnear){statusEl2.textContent='SURFACE — '+seqBody.name.toUpperCase();statusEl2.style.color='rgba(0,200,64,.7)';}
     else if(active2&&!scanComplete2[near2.name]){statusEl2.textContent='SCANNING '+near2.name+'…';statusEl2.style.color='rgba(212,150,12,.8)';}
     else{statusEl2.textContent='SCANNING…';statusEl2.style.color='rgba(212,150,12,.35)';}
@@ -4673,6 +4671,7 @@ function scheduleListerBriefing_(){
   say('Artificial intelligence confirmed.',16000);
   say('Classification: Supreme Intelligence.',22000);
   say('Threat level: Extreme Hostile.',29000);
+  setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')listerPhase=1;},29000);
   say('Raising shields now.',36000);
   setTimeout(()=>{
     if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister'){
