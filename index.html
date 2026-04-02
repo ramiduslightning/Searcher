@@ -850,7 +850,7 @@ function updateVoice(){
 
   if(near&&gs==='FLIGHT'&&!autopilotOn&&near.name!==lastVoiceApproach&&near.name!==_lastAutopilotTarget){
     const act=near.isStation?'Docking available. Select dock in actions.':'Landing available. Select land in actions.';
-    speak(`${ttsName(near.name)} visible. ${act}`);
+    speak(`Approaching ${ttsName(near.name)}. ${act}`);
     lastVoiceApproach=near.name; _targetApproachAnnounced=true; return;
   }
   if(!near){ lastVoiceApproach=''; _lastAutopilotTarget=''; }
@@ -986,7 +986,6 @@ const BODIES=[
 ];
 let tgtIdx=0;
 let autopilotOn=false;
-let _camOffY=0; // camera look-ahead — holds until player moves, then smoothly returns to zero
 let _helmAnnouncedOnce=false;
 let _targetInitDist=0;         // distance to target when it was selected
 let _targetApproachAnnounced=false; // true once the 75%-there approach is announced
@@ -1022,44 +1021,38 @@ function toggleAutopilot(){
 }
 
 function updateAutopilot(){
-  // Decay camera offset only when player is actively flying
-  if(_camOffY!==0 && !autopilotOn){
-    const playerMoving=ship.thrOn||Math.hypot(ship.vx,ship.vy)>1.0||K['arrowleft']||K['arrowright']||K['arrowup']||K['arrowdown'];
-    if(playerMoving){ _camOffY*=0.93; if(Math.abs(_camOffY)<0.5) _camOffY=0; }
-  }
   if(!autopilotOn||gs!=='FLIGHT') return;
   const t=target();
-  const stopDist=t.isStation ? Math.max(65,t.r*3.5) : Math.max(120,t.r*1.1);
-  const dx=t.x-ship.x, dy=t.y-ship.y;
-  const distToPlanet=Math.hypot(dx,dy);
-  const angleToPlanet=Math.atan2(dy,dx);
+  const stopDist=t.isStation?60:120;
+  const apX=t.x, apY=t.y+stopDist;
+  const dx=apX-ship.x, dy=apY-ship.y;
+  const distToAP=Math.hypot(dx,dy);
+  const angleToAP=Math.atan2(dy,dx);
   const spd=Math.hypot(ship.vx,ship.vy);
-
-  if(distToPlanet<=stopDist){
-    ship.vx*=0.75; ship.vy*=0.75; ship.thrOn=false;
+  if(distToAP<=12){
+    ship.vx*=0.7; ship.vy*=0.7; ship.thrOn=false;
     if(Math.hypot(ship.vx,ship.vy)<0.05){
       ship.vx=0; ship.vy=0; autopilotOn=false;
       document.getElementById('btn-autopilot').classList.remove('ap-on');
       document.getElementById('btn-autopilot').textContent='⊙ AUTOPILOT';
-      steerTarget=angleToPlanet;
-      // Shift world so planet sits at ~40% from viewport top on any screen size
-      _camOffY=stopDist - vCY()*0.2;
-      speak(ttsName(t.name)+' visible.',true);
+      // Face planet after stop — helm rotates smoothly from here
+      steerTarget=Math.atan2(t.y-ship.y,t.x-ship.x);
+      speak(ttsName(t.name)+' in range. You have control.',true);
       _lastAutopilotTarget=t.name; lastVoiceApproach=t.name; _targetApproachAnnounced=true;
     }
     return;
   }
-
-  steerTarget=angleToPlanet;
-  const da=normA(angleToPlanet-ship.angle);
+  // Always steer toward approach point — no late-angle flip
+  steerTarget=angleToAP;
+  const da=normA(angleToAP-ship.angle);
   const aligned=Math.abs(da)<0.14;
-  const brakeDist=(spd*spd)/(2*0.12)*1.8+stopDist;
-  if(distToPlanet<=brakeDist){
-    const vToward=ship.vx*Math.cos(angleToPlanet)+ship.vy*Math.sin(angleToPlanet);
-    if(vToward>0.2){ const dec=Math.min(0.18,vToward*0.5); ship.vx-=Math.cos(angleToPlanet)*dec; ship.vy-=Math.sin(angleToPlanet)*dec; ship.fuel=Math.max(0,ship.fuel-FUEL_RATE*0.35); }
+  const brakeDist=(spd*spd)/(2*0.12)*1.8+12;
+  if(distToAP<=brakeDist){
+    const vToward=ship.vx*Math.cos(angleToAP)+ship.vy*Math.sin(angleToAP);
+    if(vToward>0.2){ const dec=Math.min(0.18,vToward*0.5); ship.vx-=Math.cos(angleToAP)*dec; ship.vy-=Math.sin(angleToAP)*dec; ship.fuel=Math.max(0,ship.fuel-FUEL_RATE*0.35); }
     ship.thrOn=false;
   } else if(aligned&&ship.fuel>0){
-    const maxSpd=distToPlanet>600?9:distToPlanet>150?5:2;
+    const maxSpd=distToAP>600?9:distToAP>150?5:2;
     if(spd<maxSpd){ ship.vx+=Math.cos(ship.angle)*ship.thrPct*0.18; ship.vy+=Math.sin(ship.angle)*ship.thrPct*0.18; ship.fuel=Math.max(0,ship.fuel-FUEL_RATE*ship.thrPct); ship.thrOn=true; }
     else ship.thrOn=false;
   } else { ship.thrOn=false; }
@@ -1499,7 +1492,7 @@ function drawScene(){
   const skipWorld = (gs==='LANDING'||gs==='LAUNCHING') && seqBody && !seqBody.isStation && seqPhase>=1;
 
   if(!skipWorld){
-    CX.save(); CX.translate(cx,cy+_camOffY); CX.rotate(rot);
+    CX.save(); CX.translate(cx,cy); CX.rotate(rot);
 
     // Particles (orange/gold when thrusting)
     for(const p of PTCLS){
@@ -2338,20 +2331,80 @@ function drawVesperLanding(b, t, alt, isLaunch){
   CX.restore();
 }
 
+// ── CINEMATIC STARFIELD — rich seeded star field for landing/launch cinematics ──
+// Uses a fixed-seed LCG so stars are stable across frames (no flicker)
+function _drawCinematicStars(vx,vy,vW,vH){
+  // LCG pseudo-random seeded from fixed value — same every frame
+  let s=0xDEADBEEF;
+  const rnd=()=>{ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/0xFFFFFFFF; };
+
+  CX.save();
+  // Subtle Milky Way band — faint diagonal smear across the frame
+  const mwG=CX.createLinearGradient(vx,vy+vH*0.2,vx+vW,vy+vH*0.7);
+  mwG.addColorStop(0,'rgba(0,0,0,0)');
+  mwG.addColorStop(0.3,'rgba(140,150,170,0.04)');
+  mwG.addColorStop(0.5,'rgba(160,170,200,0.07)');
+  mwG.addColorStop(0.7,'rgba(140,150,170,0.04)');
+  mwG.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=mwG; CX.fillRect(vx,vy,vW,vH);
+
+  // Layer 1 — 900 very dim distant stars
+  for(let i=0;i<900;i++){
+    const sx=vx+rnd()*vW, sy=vy+rnd()*vH;
+    const brt=0.06+rnd()*0.18;
+    const sz=0.3+rnd()*0.35;
+    const warm=rnd()<0.12;
+    CX.fillStyle=warm?`rgba(255,220,180,${brt})`:`rgba(210,218,235,${brt})`;
+    CX.beginPath(); CX.arc(sx,sy,sz,0,Math.PI*2); CX.fill();
+  }
+  // Layer 2 — 300 medium stars
+  for(let i=0;i<300;i++){
+    const sx=vx+rnd()*vW, sy=vy+rnd()*vH;
+    const brt=0.22+rnd()*0.38;
+    const sz=0.45+rnd()*0.6;
+    const warm=rnd()<0.18;
+    CX.fillStyle=warm?`rgba(255,210,160,${brt})`:`rgba(215,225,245,${brt})`;
+    CX.beginPath(); CX.arc(sx,sy,sz,0,Math.PI*2); CX.fill();
+  }
+  // Layer 3 — 60 bright foreground stars, some with a soft glow
+  for(let i=0;i<60;i++){
+    const sx=vx+rnd()*vW, sy=vy+rnd()*vH;
+    const brt=0.55+rnd()*0.45;
+    const sz=0.7+rnd()*1.1;
+    const warm=rnd()<0.22;
+    const col=warm?`rgba(255,200,140,${brt})`:`rgba(220,232,255,${brt})`;
+    // Soft diffuse glow on brighter stars
+    if(sz>1.2){
+      const g=CX.createRadialGradient(sx,sy,0,sx,sy,sz*5);
+      g.addColorStop(0,warm?`rgba(255,200,140,${brt*0.18})`:`rgba(200,218,255,${brt*0.15})`);
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      CX.fillStyle=g; CX.beginPath(); CX.arc(sx,sy,sz*5,0,Math.PI*2); CX.fill();
+    }
+    CX.fillStyle=col;
+    CX.beginPath(); CX.arc(sx,sy,sz,0,Math.PI*2); CX.fill();
+  }
+  // Layer 4 — 8 feature stars with visible cross-diffraction spikes
+  for(let i=0;i<8;i++){
+    const sx=vx+rnd()*vW, sy=vy+rnd()*vH;
+    const sz=1.4+rnd()*1.0;
+    const warm=rnd()<0.3;
+    const col=warm?'rgba(255,200,140,0.9)':'rgba(230,240,255,0.9)';
+    CX.fillStyle=col; CX.beginPath(); CX.arc(sx,sy,sz,0,Math.PI*2); CX.fill();
+    // Diffraction spikes
+    CX.strokeStyle=warm?'rgba(255,200,140,0.18)':'rgba(200,220,255,0.16)';
+    CX.lineWidth=0.7;
+    CX.beginPath(); CX.moveTo(sx-sz*9,sy); CX.lineTo(sx+sz*9,sy); CX.stroke();
+    CX.beginPath(); CX.moveTo(sx,sy-sz*9); CX.lineTo(sx,sy+sz*9); CX.stroke();
+  }
+  CX.restore();
+}
+
 function _drawVesperExterior(vx,vy,vW,vH,prog,now,isLaunch){
   const vProg = Math.min(1, prog * 0.75);
 
   // ── SPACE BACKGROUND ──
   CX.fillStyle='#000305'; CX.fillRect(vx,vy,vW,vH);
-
-  // Stars
-  for(let i=0;i<160;i++){
-    const sx=vx+(i*137+71)%vW, sy=vy+(i*97+43)%vH;
-    const brt=0.12+((i*31)%10)*0.07;
-    const sz=0.5+(i%4)*0.22;
-    CX.fillStyle=`rgba(215,222,235,${brt})`;
-    CX.beginPath(); CX.arc(sx,sy,sz,0,Math.PI*2); CX.fill();
-  }
+  _drawCinematicStars(vx,vy,vW,vH);
 
   // ── VESPER — Saturn-style ──
   // For launch: planet starts large (near) and shrinks; for landing: starts small and grows
@@ -4033,7 +4086,7 @@ function drawScanner(){
   const statusEl2=document.getElementById('scan-status');
   if(statusEl2){
     const lnear=gs==='LANDED'&&seqBody;
-    if(lnear&&seqBody.srf==='lister'&&listerPhase>=1){statusEl2.textContent='HOSTILE SURFACE';statusEl2.style.color='rgba(255,60,60,.8)';}
+    if(lnear&&seqBody.srf==='lister'){statusEl2.textContent='HOSTILE SURFACE';statusEl2.style.color='rgba(255,60,60,.8)';}
     else if(lnear){statusEl2.textContent='SURFACE — '+seqBody.name.toUpperCase();statusEl2.style.color='rgba(0,200,64,.7)';}
     else if(active2&&!scanComplete2[near2.name]){statusEl2.textContent='SCANNING '+near2.name+'…';statusEl2.style.color='rgba(212,150,12,.8)';}
     else{statusEl2.textContent='SCANNING…';statusEl2.style.color='rgba(212,150,12,.35)';}
@@ -4092,11 +4145,7 @@ requestAnimationFrame(frame);
 function _drawListerExterior(vx,vy,vW,vH,prog,now,isLaunch){
   const vProg=Math.min(1,prog*0.75);
   CX.fillStyle='#000205'; CX.fillRect(vx,vy,vW,vH);
-  for(let i=0;i<160;i++){
-    const sx=vx+(i*137+71)%vW, sy=vy+(i*97+43)%vH;
-    CX.fillStyle=`rgba(215,222,235,${0.12+((i*31)%10)*0.07})`;
-    CX.beginPath(); CX.arc(sx,sy,0.5+(i%4)*0.22,0,Math.PI*2); CX.fill();
-  }
+  _drawCinematicStars(vx,vy,vW,vH);
   const planetX=vx+vW*0.44, planetY=vy+vH*0.55;
   const baseFrac=isLaunch?(0.18+(1-vProg)*0.32):(0.18+vProg*0.32);
   const planetR=Math.min(vW,vH)*baseFrac;
@@ -4671,7 +4720,6 @@ function scheduleListerBriefing_(){
   say('Artificial intelligence confirmed.',16000);
   say('Classification: Supreme Intelligence.',22000);
   say('Threat level: Extreme Hostile.',29000);
-  setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')listerPhase=1;},29000);
   say('Raising shields now.',36000);
   setTimeout(()=>{
     if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister'){
