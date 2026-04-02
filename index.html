@@ -1037,7 +1037,7 @@ function updateAutopilot(){
       document.getElementById('btn-autopilot').textContent='⊙ AUTOPILOT';
       // Face planet after stop — helm rotates smoothly from here
       steerTarget=Math.atan2(t.y-ship.y,t.x-ship.x);
-      speak(ttsName(t.name)+' in range. You have control.',true);
+      speak(ttsName(t.name)+' visible. You have control.',true);
       _lastAutopilotTarget=t.name; lastVoiceApproach=t.name; _targetApproachAnnounced=true;
     }
     return;
