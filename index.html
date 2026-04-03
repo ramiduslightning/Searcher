@@ -1220,7 +1220,7 @@ function updateSeq(){
   seqTimer+=0.016;
   const b=seqBody, d=distB(b);
   const spd=Math.hypot(ship.vx,ship.vy);
-  const stopD=b.isStation?b.r*2.8:b.r*1.06;
+  const stopD=b.isStation?b.r*2.8:b.r; // land exactly at surface so altitude reaches 0 cleanly
   // altitude above surface (0 = touching down)
   const alt=Math.max(0, d-b.r);
 
@@ -1300,7 +1300,7 @@ function updateSeq(){
       else if(remaining>1200) ds=2.2;
       else if(remaining>420)  ds=1.1;
       else if(remaining>120)  ds=0.55;
-      else                    ds=Math.max(0.18, remaining*0.003);
+      else                    ds=Math.max(0.05, remaining*0.003);
     }
 
     ship.vx=Math.cos(want)*ds; ship.vy=Math.sin(want)*ds;
