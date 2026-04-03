@@ -850,7 +850,7 @@ function updateVoice(){
 
   if(near&&gs==='FLIGHT'&&!autopilotOn&&near.name!==lastVoiceApproach&&near.name!==_lastAutopilotTarget){
     const act=near.isStation?'Docking available. Select dock in actions.':'Landing available. Select land in actions.';
-    speak(`${ttsName(near.name)} visible. ${act}`);
+    speak(ttsName(near.name)+'.',false);
     lastVoiceApproach=near.name; _targetApproachAnnounced=true; return;
   }
   if(!near){ lastVoiceApproach=''; _lastAutopilotTarget=''; }
@@ -863,7 +863,7 @@ function updateVoice(){
     if(curDist < _targetInitDist*0.28 && curDist > t.r*5){
       _targetApproachAnnounced=true;
       const act=t.isStation?'Prepare for docking approach.':'Prepare for orbital insertion.';
-      speak(`Approaching ${ttsName(t.name)}. ${act}`,false);
+      speak(ttsName(t.name)+'.',false);
       return;
     }
   }
@@ -1279,14 +1279,14 @@ function updateSeq(){
       ship.x+=ship.vx; ship.y+=ship.vy;
       if(Math.random()<.35) spawnP(false);
     } else {
-      ship.vx=0; ship.vy=0; seqPhase=1; seqTimer=0; sqUI(1); landStartAlt=Math.max(500, distB(seqBody)-seqBody.r);
+      ship.vx=0; ship.vy=0; seqPhase=1; seqTimer=0; sqUI(1); landStartAlt=Math.max(20, distB(seqBody)-seqBody.r);
     }
 
   } else if(seqPhase===1){ // ALIGN toward planet
     const want=Math.atan2(b.y-ship.y, b.x-ship.x);
     const da=normA(want-ship.angle);
     ship.angle+=da*0.18; steerTarget=ship.angle;
-    if(Math.abs(da)<0.04){ ship.angle=want; steerTarget=want; seqPhase=2; seqTimer=0; sqUI(2); if(landStartAlt<200) landStartAlt=Math.max(500, distB(seqBody)-seqBody.r); cinematicStart=Date.now(); }
+    if(Math.abs(da)<0.04){ ship.angle=want; steerTarget=want; seqPhase=2; seqTimer=0; sqUI(2); if(landStartAlt<20) landStartAlt=Math.max(20, distB(seqBody)-seqBody.r); cinematicStart=Date.now(); }
 
   } else if(seqPhase===2){ // ENTRY / FLYOVER / FINAL DESCENT
     const want=Math.atan2(b.y-ship.y, b.x-ship.x);
@@ -1311,7 +1311,7 @@ function updateSeq(){
 
     if(!b.isStation){
       // Record altitude when we enter phase 2 so blend is relative to approach distance
-      if(landStartAlt===0) landStartAlt=Math.max(alt, 200);
+      if(landStartAlt===0) landStartAlt=Math.max(alt, 20);
       // surfaceT goes 0→1 over the full descent, so it always starts near 0
       surfaceT=Math.max(surfaceT, Math.min(1, 1-(alt/landStartAlt)));
       surfaceAlt=alt;
@@ -4721,6 +4721,7 @@ function scheduleListerBriefing_(){
   listerPhase=0;listerShieldOn=false;listerMechsTransported=0;listerLasers=[];
   const say=(txt,delay)=>setTimeout(()=>{if(gs==='LANDED'&&seqBody&&seqBody.srf==='lister')speak(txt,true);},delay);
   say('Surface contact. Lister Alpha.',2000);
+  say('Orbital classification: Moon.',5500);
   say('Scanning. Energy signatures detected.',9000);
   say('Artificial intelligence confirmed.',16000);
   say('Classification: Supreme Intelligence.',22000);
