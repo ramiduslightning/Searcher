@@ -18,7 +18,9 @@
   --pw:122px; --bh:192px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--mono);}
+body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--mono);
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23d4960c' stroke-width='1.2' opacity='0.9'/%3E%3Ccircle cx='16' cy='16' r='1.8' fill='%23f0c840'/%3E%3Cline x1='16' y1='2' x2='16' y2='11' stroke='%23d4960c' stroke-width='1.2' opacity='0.9'/%3E%3Cline x1='16' y1='21' x2='16' y2='30' stroke='%23d4960c' stroke-width='1.2' opacity='0.9'/%3E%3Cline x1='2' y1='16' x2='11' y2='16' stroke='%23d4960c' stroke-width='1.2' opacity='0.9'/%3E%3Cline x1='21' y1='16' x2='30' y2='16' stroke='%23d4960c' stroke-width='1.2' opacity='0.9'/%3E%3C/svg%3E") 16 16, crosshair;
+}
 #space-canvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;}
 
 /* ── COCKPIT GRID ── */
@@ -264,6 +266,7 @@ body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--
 }
 #thrust-pct{font-size:9px;color:var(--gold2);letter-spacing:1px;margin-top:3px;}
 
+.tBtn,.act-btn,#steer-cv,button,input,select,[onclick]{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='5' fill='none' stroke='%23f0c840' stroke-width='1.5'/%3E%3Ccircle cx='12' cy='12' r='1.5' fill='%23f0c840'/%3E%3Cline x1='12' y1='2' x2='12' y2='8' stroke='%23f0c840' stroke-width='1.5'/%3E%3Cline x1='12' y1='16' x2='12' y2='22' stroke='%23f0c840' stroke-width='1.5'/%3E%3Cline x1='2' y1='12' x2='8' y2='12' stroke='%23f0c840' stroke-width='1.5'/%3E%3Cline x1='16' y1='12' x2='22' y2='12' stroke='%23f0c840' stroke-width='1.5'/%3E%3C/svg%3E") 12 12, pointer !important;}
 .tBtn{
   background:rgba(12,7,1,.9);border:1px solid rgba(212,150,12,.28);
   color:var(--gold2);cursor:pointer;border-radius:2px;
@@ -468,7 +471,7 @@ body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--
           <div id="thrust-pct">50%</div>
         </div>
       </div>
-      <button class="tBtn act-btn stop-btn" id="btn-stop" style="width:68px;font-size:7px;letter-spacing:2px;margin-top:2px">■ STOP</button>
+      <button class="tBtn act-btn" id="btn-pause" style="width:68px;font-size:7px;letter-spacing:2px;margin-top:2px">⏸ PAUSE</button>
     </div>
 
     <div class="ctrl-div"></div>
@@ -525,7 +528,7 @@ body{background:#000;overflow:hidden;width:100vw;height:100vh;font-family:var(--
         <button class="act-btn" id="btn-land">↓ LAND HERE</button>
         <button class="act-btn" id="btn-dock">⊕ DOCK HERE</button>
         <button class="act-btn abort-btn" id="btn-abort" style="display:none">✕ ABORT LANDING</button>
-        <button class="act-btn" id="btn-transport" style="display:none;width:100%;margin-bottom:4px;font-size:7.5px;letter-spacing:1.5px;">⬆ TRANSPORT MECHS</button>
+        <button class="act-btn" id="btn-transport" style="display:none;width:100%;margin-bottom:4px;font-size:7.5px;letter-spacing:1.5px;">⬆ DEPLOY OPERATIVE</button>
         <button class="act-btn" id="btn-launch">↑ LAUNCH</button>
         <button class="act-btn" id="btn-undock">⊖ UNDOCK</button>
       </div>
@@ -859,10 +862,9 @@ function updateVoice(){
   if(gs==='FLIGHT'&&!autopilotOn&&!_targetApproachAnnounced&&_targetInitDist>0){
     const t=target();
     const curDist=distB(t);
-    // "75% there" means only 25% of the initial distance remains
     if(curDist < _targetInitDist*0.28 && curDist > t.r*5){
       _targetApproachAnnounced=true;
-      const act=t.isStation?'Prepare for docking approach.':'Prepare for orbital insertion.';
+      lastVoiceApproach=t.name; // prevent near-approach from firing again
       speak(ttsName(t.name)+'.',false);
       return;
     }
@@ -910,6 +912,16 @@ let cinematicStart=0;
 let impactStart=0; // wall-clock ms when landing impact begins
 let listerShieldOn=false;
 let listerMechsTransported=0;
+
+// ── MECH WARS OPERATIVES ──────────────────────────────────────────────────────
+const OPERATIVES=[
+  {name:'RAMIDUS 394', col:'#7CFF4A', glow:'0,255,204',   helmet:'standard', spd:0.85, phase:0.0,  missiles:[], lastFire:0, fireInt:1800},
+  {name:'PHANTOM',     col:'#4A9FFF', glow:'74,159,255',  helmet:'angular',  spd:0.60, phase:1.4,  missiles:[], lastFire:0, fireInt:2200},
+  {name:'SPECTOR 9',   col:'#FF4A4A', glow:'255,80,60',   helmet:'heavy',    spd:1.05, phase:2.6,  missiles:[], lastFire:0, fireInt:1500},
+  {name:'TERMINUS',    col:'#FF69B4', glow:'255,130,200', helmet:'sleek',    spd:0.70, phase:0.9,  missiles:[], lastFire:0, fireInt:2600},
+];
+// Each operative tracks its own x position once deployed
+let _opX=[0,0,0,0], _opDir=[1,1,1,1], _opDeployTime=[0,0,0,0];
 let listerLasers=[];
 let listerPhase=0;
 let listerUnitPos=[];
@@ -1184,6 +1196,7 @@ let landStartAlt=0; // altitude when landing sequence phase 2 begins
 
 function startSeq(b, mode='LAND'){
   seqBody=b; seqMode=mode; gs=(mode==='LAUNCH'?'LAUNCHING':'LANDING'); seqPhase=0; seqTimer=0; surfaceT=(mode==='LAUNCH'?1:0); surfaceAlt=0; landStartAlt=0; cinematicStart=Date.now(); impactStart=0; listerCinStart=0; listerShieldOn=false; listerPhase=0; listerLasers=[];
+  if(typeof OPERATIVES!=='undefined'){OPERATIVES.forEach(op=>{op.missiles=[];op.lastFire=0;});_opX=[0,0,0,0];_opDeployTime=[0,0,0,0];}
   if(_listerAlarmIv){clearInterval(_listerAlarmIv);_listerAlarmIv=null;}
   setThrOff();
   ship.fa=true; // silent drift damping during auto sequence
@@ -1220,7 +1233,7 @@ function updateSeq(){
   seqTimer+=0.016;
   const b=seqBody, d=distB(b);
   const spd=Math.hypot(ship.vx,ship.vy);
-  const stopD=b.isStation?b.r*2.8:b.r; // land exactly at surface so altitude reaches 0 cleanly
+  const stopD=b.isStation?b.r*2.8:b.r*1.06;
   // altitude above surface (0 = touching down)
   const alt=Math.max(0, d-b.r);
 
@@ -1262,8 +1275,10 @@ function updateSeq(){
     document.getElementById('seq-panel').style.display='none';
     document.getElementById('descent-glow').className='';
     document.getElementById('btn-abort').style.display='none';
-    const _bt2=document.getElementById('btn-transport'); if(_bt2){_bt2.style.display='none';_bt2.disabled=false;_bt2.textContent='⬆ TRANSPORT MECHS';}
+    const _bt2=document.getElementById('btn-transport'); if(_bt2){_bt2.style.display='none';_bt2.disabled=false;_bt2.textContent='⬆ DEPLOY OPERATIVE';}
     listerShieldOn=false; listerPhase=0; listerLasers=[]; listerMechsTransported=0; listerCinStart=0;
+    OPERATIVES.forEach(op=>{op.missiles=[];op.lastFire=0;});
+    _opX=[0,0,0,0];_opDeployTime=[0,0,0,0];
     if(_listerAlarmIv){clearInterval(_listerAlarmIv);_listerAlarmIv=null;}
     _redAlertActive=false;
     // NOTE: updateVoice() will announce "Launch complete" when it detects gs changed to FLIGHT
@@ -1279,31 +1294,50 @@ function updateSeq(){
       ship.x+=ship.vx; ship.y+=ship.vy;
       if(Math.random()<.35) spawnP(false);
     } else {
-      ship.vx=0; ship.vy=0; seqPhase=1; seqTimer=0; sqUI(1); landStartAlt=Math.max(20, distB(seqBody)-seqBody.r);
+      ship.vx=0; ship.vy=0; seqPhase=1; seqTimer=0; sqUI(1); landStartAlt=Math.max(80, distB(seqBody)-seqBody.r);
     }
 
   } else if(seqPhase===1){ // ALIGN toward planet
     const want=Math.atan2(b.y-ship.y, b.x-ship.x);
     const da=normA(want-ship.angle);
     ship.angle+=da*0.18; steerTarget=ship.angle;
-    if(Math.abs(da)<0.04){ ship.angle=want; steerTarget=want; seqPhase=2; seqTimer=0; sqUI(2); if(landStartAlt<20) landStartAlt=Math.max(20, distB(seqBody)-seqBody.r); cinematicStart=Date.now(); }
+    if(Math.abs(da)<0.04){
+      ship.angle=want; steerTarget=want;
+      // Ensure ship is far enough from surface to produce a visible descent
+      const minDescentDist = b.r + (b.srf==='lister' ? 110 : 80);
+      if(distB(b) < minDescentDist){
+        // Pull ship back to minimum distance along the away vector
+        const awayA=Math.atan2(ship.y-b.y, ship.x-b.x);
+        ship.x=b.x+Math.cos(awayA)*minDescentDist;
+        ship.y=b.y+Math.sin(awayA)*minDescentDist;
+      }
+      landStartAlt=Math.max(distB(b)-b.r, 80);
+      seqPhase=2; seqTimer=0; sqUI(2); cinematicStart=Date.now();
+    }
 
   } else if(seqPhase===2){ // ENTRY / FLYOVER / FINAL DESCENT
     const want=Math.atan2(b.y-ship.y, b.x-ship.x);
     const remaining=Math.max(0, d-stopD);
+
+    // Capture landStartAlt on the very first frame of phase 2 so it reflects actual distance
+    if(!b.isStation && landStartAlt<remaining){
+      landStartAlt=Math.max(remaining, 80);
+    }
+
     let ds;
     if(b.isStation){
       ds=Math.min(4, Math.max(0.25, remaining*0.045));
+    } else if(b.srf==='lister'){
+      // Lister-Alpha — 60% faster than before
+      if(remaining>420)  ds=2.25;
+      else if(remaining>120) ds=1.38;
+      else ds=Math.max(0.038, remaining*0.0075);
     } else {
-      // Slow and cinematic — full descent takes 25-40 seconds
-      if(remaining>2600)      ds=3.5;
-      else if(remaining>1200) ds=2.2;
-      else if(remaining>420)  ds=1.1;
-      else if(remaining>120)  ds=0.55;
-      // Final approach: ~4s for planets, ~3.2s for Lister-Alpha (moon, shorter gravity well)
-      else ds=b.srf==='lister'
-        ? Math.max(0.036, remaining*0.00525)
-        : Math.max(0.03,  remaining*0.0042);
+      if(remaining>2600)      ds=9.5;
+      else if(remaining>1200) ds=5.9;
+      else if(remaining>420)  ds=3.0;
+      else if(remaining>120)  ds=1.5;
+      else ds=Math.max(0.032, remaining*0.006);
     }
 
     ship.vx=Math.cos(want)*ds; ship.vy=Math.sin(want)*ds;
@@ -1314,7 +1348,7 @@ function updateSeq(){
 
     if(!b.isStation){
       // Record altitude when we enter phase 2 so blend is relative to approach distance
-      if(landStartAlt===0) landStartAlt=Math.max(alt, 20);
+      if(landStartAlt===0) landStartAlt=Math.max(alt, 80);
       // surfaceT goes 0→1 over the full descent, so it always starts near 0
       surfaceT=Math.max(surfaceT, Math.min(1, 1-(alt/landStartAlt)));
       surfaceAlt=alt;
@@ -1403,7 +1437,20 @@ document.getElementById('btn-tab').addEventListener('click',()=>{ cycleTarget();
 document.getElementById('btn-autopilot').addEventListener('click', toggleAutopilot);
 document.getElementById('btn-t-up').addEventListener('click',()=>setThr(ship.thrPct+.1));
 document.getElementById('btn-t-dn').addEventListener('click',()=>setThr(ship.thrPct-.1));
-document.getElementById('btn-stop').addEventListener('click',()=>{ship.vx=0;ship.vy=0;setThrOff();steerActive=false;});
+let _gamePaused=false;
+document.getElementById('btn-pause').addEventListener('click',()=>{
+  _gamePaused=!_gamePaused;
+  const btn=document.getElementById('btn-pause');
+  if(_gamePaused){
+    btn.textContent='▶ RESUME';
+    btn.style.color='var(--green)';
+    btn.style.borderColor='rgba(0,160,48,.5)';
+  } else {
+    btn.textContent='⏸ PAUSE';
+    btn.style.color='';
+    btn.style.borderColor='';
+  }
+});
 // LAND/DOCK: use stored approachBody (set when button becomes visible) to avoid race condition
 document.getElementById('btn-land').addEventListener('click',()=>{if(approachBody&&!approachBody.isStation)startSeq(approachBody);});
 document.getElementById('btn-dock').addEventListener('click',()=>{if(approachBody&&approachBody.isStation)startSeq(approachBody);});
@@ -4023,10 +4070,17 @@ function updateHUD(){
 {
   const _bt=document.getElementById('btn-transport');
   if(_bt) _bt.addEventListener('click',()=>{
-    listerMechsTransported=Math.min(3,listerMechsTransported+1);
+    if(listerMechsTransported>0) return;
     const btn=document.getElementById('btn-transport');
-    if(listerMechsTransported>=3){ btn.disabled=true; btn.textContent='⬆ TRANSPORT COMPLETE'; speak('Three mech units secured.',false); }
-    else{ btn.textContent=`⬆ TRANSPORT MECHS (${listerMechsTransported}/3)`; speak('Mech unit '+listerMechsTransported+' secured.',false); }
+    // Deploy all 4 at once — spread across the screen
+    for(let i=0;i<4;i++){
+      _opX[i] = PW + Math.round((CV.width-PW*2) * (0.15 + i * 0.22));
+      OPERATIVES[i].lastFire = Date.now() + i * 600;
+      _opDeployTime[i] = Date.now() + i * 400; // stagger beam-in 400ms apart
+    }
+    listerMechsTransported=4;
+    btn.disabled=true; btn.textContent='⬆ OPERATIVES DEPLOYED';
+    speak('All operatives deployed.',false);
   });
 }
 
@@ -4034,10 +4088,12 @@ function frame(){
   requestAnimationFrame(frame);
   if(typeof updateAutopilot==='function') updateAutopilot();
   drawScene();
-  physics();
-  updateHUD();
-  updateSounds();
-  updateVoice();
+  if(!_gamePaused){
+    physics();
+    updateHUD();
+    updateSounds();
+    updateVoice();
+  }
   if(typeof drawScanner==='function') drawScanner();
   if(typeof drawDataScan==='function') drawDataScan();
 }
@@ -4255,119 +4311,94 @@ function _drawListerSurface(vx,vy,vW,vH,now){
   // ── SKY PLANETS — VERDIS (green ringed, upper-left) and GLACIUS (blue ringed, upper-right) ──
   // These are real planets in the universe, visible from Lister-Alpha's surface
 
-  // VERDIS — large green ringed world, upper-left
+  // VERDIS — large green ringed world, upper-left — near-vertical ring
   {
-    const pr=Math.min(vW,vH)*0.092;
-    const px2=vx+vW*0.14, py2=vy+vH*0.20;
-    const pg=CX.createRadialGradient(px2-pr*.25,py2-pr*.25,pr*.10,px2,py2,pr);
-    pg.addColorStop(0,'#a7ff4a');pg.addColorStop(.35,'#38d94a');pg.addColorStop(.7,'#0b6b2f');pg.addColorStop(1,'#032512');
-    CX.fillStyle=pg;CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.fill();
-    // Cloud bands clipped to sphere
+    const pr=Math.min(vW,vH)*0.115; // bigger/closer
+    const px2=vx+vW*0.13, py2=vy+vH*0.22;
+    // Atmospheric glow
+    const halo=CX.createRadialGradient(px2,py2,pr*0.8,px2,py2,pr*1.5);
+    halo.addColorStop(0,'rgba(60,220,80,.28)');halo.addColorStop(1,'rgba(0,0,0,0)');
+    CX.fillStyle=halo;CX.beginPath();CX.arc(px2,py2,pr*1.5,0,Math.PI*2);CX.fill();
+    // Sphere
+    const pg=CX.createRadialGradient(px2-pr*.28,py2-pr*.28,pr*.08,px2,py2,pr);
+    pg.addColorStop(0,'#a7ff4a');pg.addColorStop(.3,'#38d94a');pg.addColorStop(.7,'#0b6b2f');pg.addColorStop(1,'#032512');
+    // Ring back half — slight tilt, THIN ring
+    CX.save();CX.translate(px2,py2);CX.rotate(-0.22);CX.scale(1,.18);
+    const rA=CX.createRadialGradient(0,0,pr*1.10,0,0,pr*1.68);
+    rA.addColorStop(0,'rgba(0,0,0,0)');rA.addColorStop(.08,'rgba(235,232,218,.65)');
+    rA.addColorStop(.40,'rgba(248,244,228,.50)');rA.addColorStop(.70,'rgba(190,186,170,.12)');
+    rA.addColorStop(1,'rgba(0,0,0,0)');
+    CX.beginPath();CX.moveTo(pr*1.68,0);CX.arc(0,0,pr*1.68,0,Math.PI,true);CX.lineTo(0,0);CX.closePath();
+    CX.fillStyle=rA;CX.fill();
+    [pr*1.35,pr*1.55].forEach(rr=>{CX.strokeStyle='rgba(15,25,10,.30)';CX.lineWidth=pr*0.012;CX.beginPath();CX.arc(0,0,rr,0,Math.PI,true);CX.stroke();});
+    CX.restore();
+    // Sphere on top
     CX.save();CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.clip();
-    CX.globalAlpha=0.22;
-    for(let b2=0;b2<10;b2++){
-      const by=py2-pr+b2*(pr*0.22)+Math.sin((Date.now()*0.00035)+b2)*2;
+    CX.fillStyle=pg;CX.fillRect(px2-pr,py2-pr,pr*2,pr*2);
+    // Cloud bands
+    CX.globalAlpha=0.18;
+    for(let b2=0;b2<8;b2++){
+      const by=py2-pr+b2*(pr*0.26)+Math.sin(Date.now()*0.00035+b2)*2;
       const band=CX.createLinearGradient(px2-pr,by,px2+pr,by);
-      band.addColorStop(0,'rgba(255,255,255,0)');band.addColorStop(.35,'rgba(190,255,190,.16)');
-      band.addColorStop(.65,'rgba(40,140,80,.18)');band.addColorStop(1,'rgba(255,255,255,0)');
-      CX.fillStyle=band;CX.fillRect(px2-pr,by,pr*2,pr*0.10);
+      band.addColorStop(0,'rgba(255,255,255,0)');band.addColorStop(.5,'rgba(190,255,190,.18)');band.addColorStop(1,'rgba(255,255,255,0)');
+      CX.fillStyle=band;CX.fillRect(px2-pr,by,pr*2,pr*0.13);
     }
     CX.restore();CX.globalAlpha=1;
-    // Rings — horizontal (0 tilt) to match space view
-    CX.save();CX.translate(px2,py2);CX.rotate(0);CX.scale(1,.22);
-    const rA=CX.createRadialGradient(0,0,pr*1.10,0,0,pr*1.88);
-    rA.addColorStop(0,'rgba(0,0,0,0)');rA.addColorStop(.06,'rgba(235,232,218,.70)');
-    rA.addColorStop(.30,'rgba(248,244,228,.56)');rA.addColorStop(.52,'rgba(190,186,170,.14)');
-    rA.addColorStop(.70,'rgba(225,220,205,.46)');rA.addColorStop(.90,'rgba(178,174,158,.22)');
-    rA.addColorStop(1,'rgba(0,0,0,0)');
-    // Back half (top of ellipse)
-    CX.beginPath();CX.moveTo(pr*1.88,0);CX.arc(0,0,pr*1.88,0,Math.PI,true);CX.lineTo(0,0);CX.closePath();
+    // Ring front half — thin
+    CX.save();CX.translate(px2,py2);CX.rotate(-0.22);CX.scale(1,.18);
+    CX.beginPath();CX.moveTo(pr*1.68,0);CX.arc(0,0,pr*1.68,0,Math.PI);CX.lineTo(0,0);CX.closePath();
     CX.fillStyle=rA;CX.fill();
-    [pr*1.44,pr*1.66].forEach(rr=>{CX.strokeStyle='rgba(15,20,10,.30)';CX.lineWidth=pr*0.018;CX.beginPath();CX.arc(0,0,rr,0,Math.PI,true);CX.stroke();});
+    [pr*1.35,pr*1.55].forEach(rr=>{CX.strokeStyle='rgba(15,25,10,.30)';CX.lineWidth=pr*0.012;CX.beginPath();CX.arc(0,0,rr,0,Math.PI);CX.stroke();});
     CX.restore();
-    // Planet on top (covers back ring half)
-    CX.save();CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.clip();
-    CX.fillStyle=pg;CX.fillRect(px2-pr,py2-pr,pr*2,pr*2);CX.restore();
-    // Front half rings (bottom of ellipse — in front of planet)
-    CX.save();CX.translate(px2,py2);CX.rotate(0);CX.scale(1,.22);
-    CX.beginPath();CX.moveTo(pr*1.88,0);CX.arc(0,0,pr*1.88,0,Math.PI);CX.lineTo(0,0);CX.closePath();
-    CX.fillStyle=rA;CX.fill();
-    [pr*1.44,pr*1.66].forEach(rr=>{CX.strokeStyle='rgba(15,20,10,.30)';CX.lineWidth=pr*0.018;CX.beginPath();CX.arc(0,0,rr,0,Math.PI);CX.stroke();});
-    CX.restore();
-    CX.fillStyle='rgba(80,220,100,.50)';CX.font=`7px 'Share Tech Mono',monospace`;CX.textAlign='center';
+    CX.fillStyle='rgba(80,220,100,.55)';CX.font=`7px 'Share Tech Mono',monospace`;CX.textAlign='center';
     CX.fillText('VERDIS',px2,py2+pr+12);
   }
 
-  // GLACIUS — blue ringed world, upper-right
+  // GLACIUS — blue ringed world, upper-right — horizontal ring
   {
-    const bpr=Math.min(vW,vH)*0.072;
+    const bpr=Math.min(vW,vH)*0.088;
     const bpx=vx+vW*0.80, bpy=vy+vH*0.14;
     CX.save();CX.translate(bpx,bpy);
     // Atmospheric glow
-    CX.globalAlpha=0.4;
-    const atmoG=CX.createRadialGradient(0,0,bpr*.8,0,0,bpr*1.8);
-    atmoG.addColorStop(0,'rgba(100,180,255,.3)');atmoG.addColorStop(.5,'rgba(50,120,200,.15)');atmoG.addColorStop(1,'rgba(20,60,150,0)');
-    CX.fillStyle=atmoG;CX.beginPath();CX.arc(0,0,bpr*1.8,0,Math.PI*2);CX.fill();
-    CX.globalAlpha=1;
-    // Ring behind (back half)
+    const atmoG=CX.createRadialGradient(0,0,bpr*.8,0,0,bpr*1.6);
+    atmoG.addColorStop(0,'rgba(100,180,255,.22)');atmoG.addColorStop(1,'rgba(0,0,0,0)');
+    CX.fillStyle=atmoG;CX.globalAlpha=0.7;CX.beginPath();CX.arc(0,0,bpr*1.6,0,Math.PI*2);CX.fill();CX.globalAlpha=1;
+    // Ring gradient
     const rG=CX.createLinearGradient(-bpr*2.2,0,bpr*2.2,0);
-    rG.addColorStop(0,'rgba(180,200,220,.1)');rG.addColorStop(.3,'rgba(200,220,240,.4)');
-    rG.addColorStop(.5,'rgba(220,235,250,.5)');rG.addColorStop(.7,'rgba(200,220,240,.4)');rG.addColorStop(1,'rgba(180,200,220,.1)');
-    CX.save();CX.globalAlpha=.6;CX.strokeStyle=rG;CX.lineWidth=bpr*.27;
+    rG.addColorStop(0,'rgba(180,200,220,.08)');rG.addColorStop(.3,'rgba(200,220,240,.42)');
+    rG.addColorStop(.5,'rgba(220,235,250,.55)');rG.addColorStop(.7,'rgba(200,220,240,.42)');rG.addColorStop(1,'rgba(180,200,220,.08)');
+    // Ring back half — diagonal tilt 0.28 rad
+    CX.save();CX.rotate(0);CX.scale(1,.24);
+    CX.globalAlpha=.65;CX.strokeStyle=rG;CX.lineWidth=bpr*.44;
     CX.beginPath();CX.ellipse(0,0,bpr*2,bpr*.4,0,Math.PI,Math.PI*2);CX.stroke();
-    CX.lineWidth=bpr*.13;CX.globalAlpha=.4;
+    CX.lineWidth=bpr*.20;CX.globalAlpha=.38;
     CX.beginPath();CX.ellipse(0,0,bpr*1.6,bpr*.32,0,Math.PI,Math.PI*2);CX.stroke();
     CX.restore();
-    // Planet sphere — lighter blue matching sky appearance
+    // Planet sphere
     const bpg=CX.createRadialGradient(-bpr*.3,-bpr*.3,bpr*.1,0,0,bpr);
     bpg.addColorStop(0,'#c8e8ff');bpg.addColorStop(.25,'#8ac8f0');bpg.addColorStop(.5,'#5aa8d8');bpg.addColorStop(.75,'#3a88b8');bpg.addColorStop(1,'#1a5888');
-    // Rings back half (top of ellipse, behind planet)
-    CX.save();CX.globalAlpha=.65;CX.strokeStyle=rG;CX.lineWidth=bpr*.28;
-    CX.beginPath();CX.ellipse(0,0,bpr*2,bpr*.4,0,Math.PI,Math.PI*2);CX.stroke();
-    CX.lineWidth=bpr*.13;CX.globalAlpha=.42;
-    CX.beginPath();CX.ellipse(0,0,bpr*1.6,bpr*.32,0,Math.PI,Math.PI*2);CX.stroke();
-    CX.restore();
-    // Planet sphere on top
     CX.fillStyle=bpg;CX.beginPath();CX.arc(0,0,bpr,0,Math.PI*2);CX.fill();
     // Gas bands
     CX.save();CX.beginPath();CX.arc(0,0,bpr,0,Math.PI*2);CX.clip();
     const gasT2=Date.now()*0.0001;
-    for(let i=0;i<6;i++){
-      CX.globalAlpha=0.12+(i%2)*0.05;CX.fillStyle=i%2===0?'#cceeff':'#88ccee';
-      const bandY=-bpr*.8+i*bpr*.3,woff=Math.sin(gasT2+i*.5)*3;
-      CX.beginPath();CX.ellipse(woff,bandY,bpr*1.2,5+(i%3)*2,0.05*i,0,Math.PI*2);CX.fill();
+    for(let i=0;i<5;i++){
+      CX.globalAlpha=0.10+(i%2)*0.05;CX.fillStyle=i%2===0?'#cceeff':'#88ccee';
+      const bandY=-bpr*.7+i*bpr*.32,woff=Math.sin(gasT2+i*.5)*3;
+      CX.beginPath();CX.ellipse(woff,bandY,bpr*1.1,4+(i%3)*2,0.05*i,0,Math.PI*2);CX.fill();
     }
     CX.restore();CX.globalAlpha=1;
-    // Rings front half (bottom of ellipse, in front of planet)
-    CX.save();CX.globalAlpha=.72;CX.strokeStyle=rG;CX.lineWidth=bpr*.28;
+    // Ring front half — same diagonal tilt
+    CX.save();CX.rotate(0);CX.scale(1,.24);
+    CX.globalAlpha=.78;CX.strokeStyle=rG;CX.lineWidth=bpr*.44;
     CX.beginPath();CX.ellipse(0,0,bpr*2,bpr*.4,0,0,Math.PI);CX.stroke();
-    CX.lineWidth=bpr*.13;CX.globalAlpha=.52;
+    CX.lineWidth=bpr*.20;CX.globalAlpha=.52;
     CX.beginPath();CX.ellipse(0,0,bpr*1.6,bpr*.32,0,0,Math.PI);CX.stroke();
     CX.restore();
-    CX.fillStyle='rgba(100,180,255,.50)';CX.font=`7px 'Share Tech Mono',monospace`;CX.textAlign='center';
+    CX.fillStyle='rgba(100,180,255,.55)';CX.font=`7px 'Share Tech Mono',monospace`;CX.textAlign='center';
     CX.fillText('GLACIUS',0,bpr+12);
     CX.restore();
   }
 
-  // MORAX (parent gas giant) — small in background, upper-centre, confirming proximity
-  {
-    const pr=Math.min(vW,vH)*0.038;
-    const px2=vx+vW*0.48, py2=vy+vH*0.07;
-    const halo=CX.createRadialGradient(px2,py2,pr*0.8,px2,py2,pr*1.6);
-    halo.addColorStop(0,'rgba(210,150,70,.25)');halo.addColorStop(1,'rgba(0,0,0,0)');
-    CX.fillStyle=halo;CX.beginPath();CX.arc(px2,py2,pr*1.6,0,Math.PI*2);CX.fill();
-    CX.save();CX.beginPath();CX.arc(px2,py2,pr,0,Math.PI*2);CX.clip();
-    const mg=CX.createRadialGradient(px2-pr*.22,py2-pr*.22,0,px2,py2,pr);
-    mg.addColorStop(0,'#c89050');mg.addColorStop(.4,'#a87030');mg.addColorStop(.8,'#7a5018');mg.addColorStop(1,'#3a2008');
-    CX.fillStyle=mg;CX.fillRect(px2-pr,py2-pr,pr*2,pr*2);CX.restore();
-    // Thin rings
-    CX.save();CX.translate(px2,py2);CX.rotate(-0.08);CX.scale(1,.22);
-    CX.strokeStyle='rgba(200,168,110,.45)';CX.lineWidth=Math.max(1,pr*.18);
-    CX.beginPath();CX.ellipse(0,0,pr*1.75,pr*1.75,0,0,Math.PI*2);CX.stroke();
-    CX.restore();
-    CX.fillStyle='rgba(200,150,80,.38)';CX.font=`6px 'Share Tech Mono',monospace`;CX.textAlign='center';
-    CX.fillText('MORAX',px2,py2+pr*2.2+6);
-  }
   // Hills
   const hillY=vy+vH*0.68;
   ['rgba(55,55,65,.85)','rgba(40,40,48,.9)','rgba(28,28,34,.95)'].forEach((col,ci)=>{
@@ -4497,12 +4528,74 @@ function _drawListerSurface(vx,vy,vW,vH,now){
     }
     CX.restore();
   }
-  // Transported mechs
+  // ── DEPLOYED OPERATIVES — independent movement + missile fire ──────────────
   if(listerMechsTransported>0){
-    CX.save();CX.globalAlpha=.38;
-    for(let m=0;m<listerMechsTransported;m++) _drawMechBot(vx+18+m*26,vy+vH-30,mechSc*.45,now+m,true);
-    CX.restore();
-  }
+    const nowMs=Date.now();
+    for(let m=0;m<listerMechsTransported;m++){
+      const op=OPERATIVES[m];
+      const opSc=mechSc*0.92; // 20% smaller than before (was 1.15)
+
+      // Independent walk — each operative moves at their own speed, bounces at edges
+      _opX[m]+=op.spd*_opDir[m];
+      const leftBound=vx+40, rightBound=vx+vW-80;
+      if(_opX[m]>rightBound){_opX[m]=rightBound;_opDir[m]=-1;}
+      if(_opX[m]<leftBound){_opX[m]=leftBound;_opDir[m]=1;}
+      const facingRight=_opDir[m]>0;
+
+      // Barrel tip position — matches _drawOperative cannon arm geometry
+      // torsoW = (W*0.62) where W=50*opSc. shoulderX = torsoW/2 - 10*opSc
+      // barrel tip = shoulderX + 70*opSc from operative center
+      // shoulderY = torsoY + 18*opSc where torsoY = -H*0.34, H=80*opSc
+      const _W=50*opSc, _H=80*opSc;
+      const _torsoW=_W*0.62, _torsoY=-_H*0.34;
+      const _shoulderX=_torsoW/2-10*opSc;
+      const _barrelTipX=_shoulderX+70*opSc;
+      const _barrelTipY=_torsoY+18*opSc;
+      const mslX=_opX[m]+(facingRight?_barrelTipX:-_barrelTipX);
+      const mslY=hY+_barrelTipY;
+
+      // Fire missile independently
+      if(nowMs-op.lastFire > op.fireInt + m*120){
+        op.missiles.push({x:mslX, y:mslY, vx:(facingRight?7:-7), born:nowMs});
+        op.lastFire=nowMs;
+        op.fireInt=1400+Math.random()*1200;
+      }
+
+      // ── STAR TREK TRANSPORTER EFFECT — 1.8s beam-in per operative ──
+      const beamDur=1800, beamElapsed=nowMs-_opDeployTime[m];
+      const beamT=Math.min(1, Math.max(0, beamElapsed/beamDur));
+      if(beamT<1){
+        // Shimmer column — golden sparkles materialising top-down
+        const colH=(hY-50*opSc)*beamT; // column grows downward
+        CX.save();
+        for(let p=0;p<18;p++){
+          const py2=hY-50*opSc+(colH * (p/18)) + (Math.random()-0.5)*8;
+          const px2=_opX[m]+(Math.random()-0.5)*28*opSc;
+          const pa=Math.random()*0.8*(1-beamT*0.5);
+          const sz=1+Math.random()*2.5;
+          CX.fillStyle=`rgba(180,220,255,${pa})`;
+          CX.beginPath();CX.arc(px2,py2,sz,0,Math.PI*2);CX.fill();
+        }
+        // Vertical energy beam line
+        CX.strokeStyle=`rgba(160,200,255,${(1-beamT)*0.6})`;
+        CX.lineWidth=2*opSc;
+        CX.beginPath();CX.moveTo(_opX[m],hY-80*opSc);CX.lineTo(_opX[m],hY);CX.stroke();
+        CX.restore();
+        CX.globalAlpha=beamT*beamT; // quadratic ease-in
+      }
+
+      // Update + draw missiles
+      op.missiles=op.missiles.filter(ml=>nowMs-ml.born<3000);
+      op.missiles.forEach(ml=>{
+        ml.x+=ml.vx;
+        _drawOperativeMissile(ml.x, ml.y, ml.vx>0, op.col);
+      });
+
+      // Draw operative
+      _drawOperative(op, _opX[m], hY, opSc, now, facingRight, m);
+      CX.globalAlpha=1; // restore
+    } // end for each operative
+  } // end if listerMechsTransported>0
   // ── RED ALERT OVERLAY — pulses in sync with klaxon when hostiles are firing ──
   if(_redAlertActive){
     const msNow=Date.now();
@@ -4632,6 +4725,195 @@ function _drawListerDrone(cx2,cy2,w,h,now){
   CX.fillStyle='#ff4444';CX.shadowBlur=15;CX.beginPath();CX.arc(0,h*.1,5,0,Math.PI*2);CX.fill();
   CX.globalAlpha=pulse*.5;CX.fillStyle='rgba(255,100,100,.5)';CX.beginPath();CX.arc(0,h*.1,15,0,Math.PI*2);CX.fill();
   CX.globalAlpha=1;CX.shadowBlur=0;CX.restore();
+}
+
+function _drawOperativeMissile(x,y,facingRight,col){
+  CX.save();
+  CX.translate(x,y);
+  if(!facingRight) CX.scale(-1,1);
+  // Silver bullet body
+  CX.fillStyle='#c8cdd4';
+  CX.beginPath();
+  CX.moveTo(18,0);CX.lineTo(12,-4);CX.lineTo(-14,-4);CX.lineTo(-14,4);CX.lineTo(12,4);
+  CX.closePath();CX.fill();
+  // Nose cone — red
+  CX.fillStyle='#ff3322';
+  CX.beginPath();CX.moveTo(18,0);CX.lineTo(10,-3.5);CX.lineTo(10,3.5);CX.closePath();CX.fill();
+  // Exhaust trail — simple gradient from operative color to transparent
+  const tr=CX.createLinearGradient(-14,0,-34,0);
+  tr.addColorStop(0,col);
+  tr.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=tr;
+  CX.beginPath();CX.moveTo(-14,-3.5);CX.lineTo(-34,0);CX.lineTo(-14,3.5);CX.closePath();CX.fill();
+  CX.restore();
+}
+
+function _drawOperative(op,cx2,cy2,sc,now,facingRight,idx){
+  // Ported directly from MechWars drawPlayer — same steel colors, helmets, missile pod, cannon arm
+  CX.save();
+  CX.translate(cx2,cy2);
+  if(!facingRight) CX.scale(-1,1);
+
+  const W=50*sc, H=80*sc;
+  const glowRGB=op.glow, trimRGB=op.glow;
+  const trim=op.col;
+
+  const steelDark='#0b111a', steelMid='#223246', steelLite='#4e6a86';
+  function steelGrad(x0,x1){
+    const g=CX.createLinearGradient(x0,0,x1,0);
+    g.addColorStop(0,steelDark); g.addColorStop(0.35,steelMid);
+    g.addColorStop(0.7,steelLite); g.addColorStop(1,steelDark); return g;
+  }
+
+  CX.shadowColor=`rgba(${glowRGB},0.95)`; CX.shadowBlur=28*sc;
+
+  // Ground shadow
+  CX.fillStyle='rgba(0,0,0,0.45)';
+  CX.beginPath(); CX.ellipse(0,H*0.55,W*0.65,12*sc,0,0,Math.PI*2); CX.fill();
+
+  // Big glow aura
+  const ag=CX.createRadialGradient(0,0,5*sc,0,-H*0.1,70*sc);
+  ag.addColorStop(0,`rgba(${glowRGB},0.22)`); ag.addColorStop(0.5,`rgba(${glowRGB},0.08)`); ag.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=ag; CX.beginPath(); CX.arc(0,-H*0.1,70*sc,0,Math.PI*2); CX.fill();
+
+  // ── LEGS ──
+  const hipY=H*0.05, legSpan=W*0.19, upperH=H*0.33, lowerH=H*0.35;
+  const isFem=(op.helmet==='sleek');
+  const legW=(isFem?18:28)*sc, legR=(isFem?-9:-14)*sc;
+  const shinW=(isFem?16:24)*sc, shinR=(isFem?-8:-12)*sc;
+  const footW=(isFem?26:36)*sc, footR=(isFem?-13:-18)*sc;
+  const legAnim=Math.sin(now*(0.8+idx*0.15)+op.phase);
+
+  for(let side=-1;side<=1;side+=2){
+    CX.save(); CX.translate(side*legSpan,hipY); CX.rotate(legAnim*side*0.35);
+    // Upper leg
+    CX.fillStyle=steelGrad(-18*sc,18*sc);
+    CX.fillRect(legR,-6*sc,legW,upperH);
+    // Knee joint
+    CX.fillStyle=steelLite; CX.beginPath(); CX.arc(0,upperH+2*sc,10*sc,0,Math.PI*2); CX.fill();
+    CX.save(); CX.shadowColor=trim; CX.shadowBlur=14*sc;
+    CX.fillStyle=`rgba(${glowRGB},0.75)`; CX.beginPath(); CX.arc(0,upperH+2*sc,4*sc,0,Math.PI*2); CX.fill();
+    CX.restore();
+    // Lower leg
+    CX.fillStyle=steelGrad(-16*sc,16*sc); CX.fillRect(shinR,upperH,shinW,lowerH);
+    // Foot
+    CX.fillStyle=steelDark; CX.fillRect(footR,upperH+lowerH-2*sc,footW,12*sc);
+    CX.restore();
+  }
+
+  // ── TORSO ──
+  const torsoW=(isFem?W*0.56:W*0.62), torsoH=H*0.40, torsoY=-H*0.34;
+
+  // Backpack
+  const bpW=(isFem?38:44)*sc;
+  CX.fillStyle=steelGrad(-22*sc,22*sc);
+  CX.fillRect(-bpW/2,torsoY+10*sc,bpW,torsoH+28*sc);
+
+  // Main chest
+  const cg=CX.createLinearGradient(-torsoW/2,torsoY,torsoW/2,torsoY);
+  cg.addColorStop(0,steelDark); cg.addColorStop(0.35,steelMid); cg.addColorStop(0.7,steelLite); cg.addColorStop(1,steelDark);
+  CX.fillStyle=cg;
+  if(isFem){
+    // Terminus hourglass
+    const sw=torsoW*0.56,ww=torsoW*0.22,hw=torsoW*0.58;
+    const tTop=torsoY,tMid=torsoY+torsoH*0.52,tBot=torsoY+torsoH;
+    CX.beginPath(); CX.moveTo(-sw+4*sc,tTop); CX.lineTo(sw-4*sc,tTop);
+    CX.quadraticCurveTo(sw+2*sc,tTop,sw+2*sc,tTop+6*sc);
+    CX.lineTo(sw,tTop+torsoH*0.25);
+    CX.quadraticCurveTo(ww+6*sc,tMid-3*sc,ww,tMid);
+    CX.quadraticCurveTo(ww+6*sc,tMid+6*sc,hw+2*sc,tBot-6*sc);
+    CX.quadraticCurveTo(hw+2*sc,tBot,hw-2*sc,tBot);
+    CX.lineTo(-hw+2*sc,tBot);
+    CX.quadraticCurveTo(-hw-2*sc,tBot,-hw-2*sc,tBot-6*sc);
+    CX.quadraticCurveTo(-ww-6*sc,tMid+6*sc,-ww,tMid);
+    CX.quadraticCurveTo(-ww-6*sc,tMid-3*sc,-sw,tTop+torsoH*0.25);
+    CX.lineTo(-sw-2*sc,tTop+6*sc); CX.quadraticCurveTo(-sw-2*sc,tTop,-sw+4*sc,tTop); CX.closePath(); CX.fill();
+  } else {
+    CX.fillRect(-torsoW/2,torsoY,torsoW,torsoH);
+  }
+
+  // Chest panels
+  CX.fillStyle='rgba(255,255,255,0.05)';
+  if(!isFem){
+    CX.fillRect(-torsoW*0.42,torsoY+10*sc,torsoW*0.36,torsoH*0.70);
+    CX.fillRect(torsoW*0.06,torsoY+10*sc,torsoW*0.36,torsoH*0.70);
+  }
+
+  // Reactor core
+  CX.save(); CX.shadowColor=trim; CX.shadowBlur=26*sc;
+  const core=CX.createRadialGradient(0,torsoY+torsoH*0.55,0,0,torsoY+torsoH*0.55,36*sc);
+  core.addColorStop(0,`rgba(${glowRGB},0.85)`); core.addColorStop(0.4,`rgba(${glowRGB},0.35)`); core.addColorStop(1,'rgba(0,0,0,0)');
+  CX.fillStyle=core; CX.beginPath(); CX.arc(0,torsoY+torsoH*0.55,36*sc,0,Math.PI*2); CX.fill(); CX.restore();
+  CX.fillStyle='rgba(10,16,24,0.9)'; CX.beginPath(); CX.arc(0,torsoY+torsoH*0.55,16*sc,0,Math.PI*2); CX.fill();
+  CX.save(); CX.shadowColor=trim; CX.shadowBlur=18*sc;
+  CX.fillStyle=`rgba(${glowRGB},0.75)`; CX.beginPath(); CX.arc(0,torsoY+torsoH*0.55,6*sc,0,Math.PI*2); CX.fill(); CX.restore();
+
+  // ── HEAD ──
+  const headY=torsoY-18*sc;
+  if(op.helmet==='angular'){
+    // PHANTOM — swept-back fins
+    CX.fillStyle=steelGrad(-18*sc,18*sc);
+    CX.beginPath();
+    CX.moveTo(-16*sc,headY+26*sc); CX.lineTo(-20*sc,headY+8*sc);
+    CX.lineTo(-16*sc,headY-2*sc); CX.lineTo(0,headY-6*sc);
+    CX.lineTo(16*sc,headY-2*sc); CX.lineTo(20*sc,headY+8*sc);
+    CX.lineTo(16*sc,headY+26*sc); CX.closePath(); CX.fill();
+    CX.fillStyle=steelDark;
+    CX.beginPath(); CX.moveTo(-16*sc,headY); CX.lineTo(-26*sc,headY-10*sc); CX.lineTo(-18*sc,headY+6*sc); CX.closePath(); CX.fill();
+    CX.beginPath(); CX.moveTo(16*sc,headY); CX.lineTo(26*sc,headY-10*sc); CX.lineTo(18*sc,headY+6*sc); CX.closePath(); CX.fill();
+  } else if(op.helmet==='heavy'){
+    // SPECTOR 9 — jaw guard
+    CX.fillStyle=steelGrad(-20*sc,20*sc);
+    CX.fillRect(-20*sc,headY-2*sc,40*sc,28*sc);
+    CX.fillStyle=steelDark; CX.fillRect(-22*sc,headY-2*sc,44*sc,10*sc);
+    CX.fillStyle=steelMid;
+    CX.beginPath(); CX.moveTo(-20*sc,headY+18*sc); CX.lineTo(-24*sc,headY+28*sc); CX.lineTo(-14*sc,headY+26*sc); CX.closePath(); CX.fill();
+    CX.beginPath(); CX.moveTo(20*sc,headY+18*sc); CX.lineTo(24*sc,headY+28*sc); CX.lineTo(14*sc,headY+26*sc); CX.closePath(); CX.fill();
+  } else if(op.helmet==='sleek'){
+    // TERMINUS — contoured
+    CX.fillStyle=steelGrad(-18*sc,18*sc);
+    CX.beginPath();
+    CX.moveTo(-14*sc,headY+26*sc); CX.lineTo(-18*sc,headY+12*sc); CX.lineTo(-16*sc,headY);
+    CX.lineTo(-8*sc,headY-4*sc); CX.lineTo(8*sc,headY-4*sc); CX.lineTo(16*sc,headY);
+    CX.lineTo(18*sc,headY+12*sc); CX.lineTo(14*sc,headY+26*sc); CX.closePath(); CX.fill();
+  } else {
+    // RAMIDUS 394 — standard rounded
+    CX.fillStyle=steelGrad(-18*sc,18*sc);
+    CX.fillRect(-18*sc,headY,36*sc,26*sc);
+  }
+
+  // ── MISSILE POD (left shoulder) — the 3-dot chest panel ──
+  const podX=-torsoW/2+12*sc, podY=torsoY+10*sc;
+  CX.fillStyle=steelGrad(podX-10*sc,podX+40*sc);
+  CX.fillRect(podX,podY,48*sc,26*sc);
+  CX.fillStyle='#0a0f18';
+  for(let i=0;i<3;i++){ CX.beginPath(); CX.arc(podX+12*sc+i*12*sc,podY+13*sc,5.4*sc,0,Math.PI*2); CX.fill(); }
+  CX.save(); CX.shadowColor='#ffcc00'; CX.shadowBlur=12*sc;
+  CX.fillStyle='rgba(255,204,0,0.55)'; CX.beginPath(); CX.arc(podX+44*sc,podY+6*sc,2.4*sc,0,Math.PI*2); CX.fill(); CX.restore();
+
+  // ── CANNON ARM (right shoulder) ──
+  const shoulderY=torsoY+18*sc, shoulderX=torsoW/2-10*sc;
+  CX.fillStyle=steelLite; CX.beginPath(); CX.arc(shoulderX,shoulderY,10*sc,0,Math.PI*2); CX.fill();
+  CX.save(); CX.translate(shoulderX,shoulderY);
+  CX.fillStyle=steelGrad(-10*sc,18*sc); CX.fillRect(0,-7*sc,28*sc,14*sc);
+  CX.fillStyle=steelGrad(0,56*sc); CX.fillRect(18*sc,-10*sc,60*sc,20*sc);
+  CX.fillStyle='#0a0f18'; CX.fillRect(70*sc,-5*sc,62*sc,10*sc);
+  CX.fillStyle=steelMid; CX.fillRect(85*sc,-5*sc,2*sc,10*sc); CX.fillRect(110*sc,-5*sc,2*sc,10*sc);
+  CX.restore();
+
+  // Torso outline
+  CX.strokeStyle='rgba(220,235,255,0.10)'; CX.lineWidth=1.5*sc;
+  CX.strokeRect(-torsoW/2,torsoY,torsoW,torsoH);
+
+  // ── VISOR — gold slit ──
+  CX.save(); CX.shadowColor='rgba(255,204,64,0.95)'; CX.shadowBlur=25*sc;
+  CX.fillStyle='rgba(255,204,64,0.85)';
+  CX.fillRect(-12*sc,headY+8*sc,24*sc,6*sc);
+  CX.shadowBlur=35*sc; CX.fillStyle='rgba(255,240,180,0.6)';
+  CX.fillRect(-8*sc,headY+9*sc,16*sc,4*sc);
+  CX.restore();
+
+  CX.restore();
 }
 
 function _drawMechBot(cx2,cy2,sc,now,facingRight){
@@ -4790,7 +5072,7 @@ function listerStartFiring(){
       }
       shots++;
       if(!listerShieldOn) ship.hull=Math.max(0,ship.hull-3);
-      if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Mech fighters available for transport.',false);}
+      if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Operatives ready for deployment.',false);}
       return;
     }
     // Show charge-up on tank 400ms before bolt
@@ -4845,7 +5127,7 @@ function listerStartFiring(){
         imp.connect(ig); ig.connect(ac2.destination); imp.start(); imp.stop(ac2.currentTime+0.25);
       }catch(e){}
     }
-    if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Mech fighters available for transport.',false);}
+    if(listerPhase===2){listerPhase=3;document.getElementById('btn-transport').style.display='flex';speak('Operatives ready for deployment.',false);}
   },1500);
 }
 </script>
